@@ -69,3 +69,6 @@ unusual syntax — treat the arrows as a helpful map, not ground truth.
 
 Both files need to stay in the same folder (the script reads
 `template.html` next to itself).
+
+## LICENSE
+[LICENSE](LICENSE)
