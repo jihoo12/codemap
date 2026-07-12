@@ -350,7 +350,11 @@ function renderHtml(data) {
   const json = JSON.stringify(data)
     .replace(/</g, '\\u003c')
     .replace(/>/g, '\\u003e'); // avoid closing </script> early
-  return template.replace('/*__CODEMAP_DATA__*/', json);
+  // IMPORTANT: use a replacer function, not a replacer string. String.replace()
+  // treats "$" sequences in a *string* replacement specially (e.g. "$`", "$'",
+  // "$&"), and real-world file content (prices, shell scripts, regexes) often
+  // contains "$" - a plain string replacement would silently corrupt the output.
+  return template.replace('/*__CODEMAP_DATA__*/', () => json);
 }
 
 main();

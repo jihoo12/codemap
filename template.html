@@ -132,17 +132,40 @@
     display: flex; gap: 14px; flex-wrap: wrap;
   }
   #panel .refs {
-    padding: 8px 14px; border-bottom: 1px solid var(--border);
+    padding: 4px 14px; border-bottom: 1px solid var(--border);
     font-size: 12px;
   }
-  #panel .refs h4 { margin: 0 0 6px; font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.4px; }
+  #panel .refs details.ref-section { margin: 4px 0; }
+  #panel .refs summary {
+    cursor: pointer; font-size: 11px; color: var(--text-dim);
+    text-transform: uppercase; letter-spacing: 0.4px;
+    padding: 4px 0; list-style: none;
+    display: flex; align-items: center; gap: 6px; user-select: none;
+  }
+  #panel .refs summary:hover { color: var(--text); }
+  #panel .refs summary::-webkit-details-marker { display: none; }
+  #panel .refs summary::before {
+    content: '▶'; font-size: 8px; display: inline-block;
+    transition: transform 0.15s ease; color: var(--text-dim); flex-shrink: 0;
+  }
+  #panel .refs details[open] > summary::before { transform: rotate(90deg); }
+  #panel .refs summary .count-badge {
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 0 6px; font-size: 10px; color: var(--text-dim);
+  }
+  #panel .refs .ref-list { padding: 2px 0 6px 14px; }
   #panel .refs .ref-item {
     display: block; color: var(--accent); text-decoration: none;
     font-family: var(--mono); font-size: 12px; padding: 2px 0; cursor: pointer;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   #panel .refs .ref-item:hover { text-decoration: underline; }
-  #panel .refs .none { color: var(--text-dim); font-style: italic; }
+  #panel .refs .none { color: var(--text-dim); font-style: italic; padding: 2px 0 6px; }
+  #panel .refs .expand-all {
+    background: none; border: none; color: var(--text-dim);
+    font-size: 10px; cursor: pointer; padding: 4px 0; text-decoration: underline;
+  }
+  #panel .refs .expand-all:hover { color: var(--accent); }
   #panel .content-wrap { flex: 1; overflow: auto; padding: 0; }
   #panel pre {
     margin: 0; padding: 14px; font-family: var(--mono);
@@ -182,7 +205,7 @@
     <span class="sub" id="proj-sub"></span>
     <div class="spacer"></div>
     <input type="text" id="search" placeholder="Filter files..." />
-    <button id="reset-zoom">Reset view</button>
+    <button id="reset-zoom">Fit view</button>
   </header>
   <div id="main">
     <div id="canvas-wrap">
@@ -271,14 +294,32 @@ function runCodemap(data) {
     .attr('d', 'M0,-5L10,0L0,5')
     .attr('fill', '#5fb3ff');
 
-  const zoom = d3.zoom().scaleExtent([0.15, 4]).on('zoom', (ev) => {
+  const zoom = d3.zoom().scaleExtent([0.03, 6]).on('zoom', (ev) => {
     zoomLayer.attr('transform', ev.transform);
   });
   svg.call(zoom);
 
-  document.getElementById('reset-zoom').addEventListener('click', () => {
-    svg.transition().duration(400).call(zoom.transform, d3.zoomIdentity);
-  });
+  let hasAutoFit = false;
+  function fitToContent(duration) {
+    if (!simNodes.length) return;
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const n of simNodes) {
+      const r = nodeRadius(n) + HULL_PADDING + 20; // room for hull padding + label
+      if (n.x - r < x0) x0 = n.x - r;
+      if (n.x + r > x1) x1 = n.x + r;
+      if (n.y - r < y0) y0 = n.y - r;
+      if (n.y + r > y1) y1 = n.y + r;
+    }
+    const bw = Math.max(1, x1 - x0), bh = Math.max(1, y1 - y0);
+    const scale = Math.max(zoom.scaleExtent()[0], Math.min(zoom.scaleExtent()[1], 0.9 / Math.max(bw / width, bh / height)));
+    const tx = width / 2 - scale * (x0 + bw / 2);
+    const ty = height / 2 - scale * (y0 + bh / 2);
+    const t = d3.zoomIdentity.translate(tx, ty).scale(scale);
+    if (duration) svg.transition().duration(duration).call(zoom.transform, t);
+    else svg.call(zoom.transform, t);
+  }
+
+  document.getElementById('reset-zoom').addEventListener('click', () => fitToContent(400));
 
   // size nodes by rough content length (loc proxy), clamped
   function nodeRadius(n) {
@@ -299,28 +340,62 @@ function runCodemap(data) {
 
   const simulation = d3.forceSimulation(simNodes)
     .force('link', d3.forceLink(simLinks).id(d => d.id).distance(70).strength(0.15))
-    .force('charge', d3.forceManyBody().strength(-140))
-    .force('collide', d3.forceCollide().radius(d => nodeRadius(d) + 10))
+    .force('charge', d3.forceManyBody().strength(-70))
+    .force('collide', d3.forceCollide().radius(d => nodeRadius(d) + 6))
     .force('center', d3.forceCenter(width / 2, height / 2))
     .force('cluster', clusterForce())
-    .on('tick', ticked);
+    .on('tick', ticked)
+    .on('end', () => { if (!hasAutoFit) { hasAutoFit = true; fitToContent(500); } });
 
   // custom force: pull nodes toward the centroid of their own directory group
+  const HULL_PADDING = 20; // must match the padding used in drawHulls()
+
   function clusterForce() {
     let nodes;
     function force(alpha) {
-      const centroids = new Map();
+      // group nodes by directory and find each group's centroid
+      const groups = new Map();
       for (const n of nodes) {
-        if (!centroids.has(n.dir)) centroids.set(n.dir, { x: 0, y: 0, count: 0 });
-        const c = centroids.get(n.dir);
-        c.x += n.x; c.y += n.y; c.count++;
+        if (!groups.has(n.dir)) groups.set(n.dir, { x: 0, y: 0, count: 0, members: [] });
+        const g = groups.get(n.dir);
+        g.x += n.x; g.y += n.y; g.count++; g.members.push(n);
       }
-      for (const c of centroids.values()) { c.x /= c.count; c.y /= c.count; }
-      const k = alpha * 0.25;
+      for (const g of groups.values()) { g.x /= g.count; g.y /= g.count; }
+
+      // pull each node toward its own group's centroid
+      const k = alpha * 0.4;
       for (const n of nodes) {
-        const c = centroids.get(n.dir);
-        n.vx += (c.x - n.x) * k;
-        n.vy += (c.y - n.y) * k;
+        const g = groups.get(n.dir);
+        n.vx += (g.x - n.x) * k;
+        n.vy += (g.y - n.y) * k;
+      }
+
+      // find each group's rough "radius" so we know how much space its hull needs
+      for (const g of groups.values()) {
+        let maxD = 0;
+        for (const n of g.members) {
+          const dx = n.x - g.x, dy = n.y - g.y;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          if (d > maxD) maxD = d;
+        }
+        g.radius = maxD + HULL_PADDING;
+      }
+
+      // push whole groups apart from each other when their hulls would overlap
+      const groupList = Array.from(groups.values());
+      for (let i = 0; i < groupList.length; i++) {
+        for (let j = i + 1; j < groupList.length; j++) {
+          const gA = groupList[i], gB = groupList[j];
+          const dx = gB.x - gA.x, dy = gB.y - gA.y;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 0.001;
+          const minDist = gA.radius + gB.radius + 12; // extra gap between hulls
+          if (dist < minDist) {
+            const push = ((minDist - dist) / dist) * alpha * 0.9;
+            const ox = dx * push, oy = dy * push;
+            for (const n of gA.members) { n.vx -= ox; n.vy -= oy; }
+            for (const n of gB.members) { n.vx += ox; n.vy += oy; }
+          }
+        }
       }
     }
     force.initialize = (ns) => { nodes = ns; };
@@ -391,7 +466,7 @@ function runCodemap(data) {
       const padded = hull.map(p => {
         const dx = p[0] - centroid[0], dy = p[1] - centroid[1];
         const len = Math.sqrt(dx*dx + dy*dy) || 1;
-        return [p[0] + (dx/len) * 26, p[1] + (dy/len) * 26];
+        return [p[0] + (dx/len) * HULL_PADDING, p[1] + (dy/len) * HULL_PADDING];
       });
       hullData.push({ dir, path: 'M' + padded.map(p => p.join(',')).join('L') + 'Z', top: d3.min(padded, p => p[1]), cx: centroid[0] });
     }
@@ -433,19 +508,24 @@ function runCodemap(data) {
     const refsEl = document.getElementById('p-refs');
     const outs = outgoing.get(d.id) || [];
     const ins = incoming.get(d.id) || [];
-    let refsHtml = '<h4>References (' + outs.length + ')</h4>';
-    refsHtml += outs.length
-      ? outs.map(id => `<a class="ref-item" data-id="${escapeAttr(id)}">→ ${escapeHtml(id)}</a>`).join('')
-      : '<div class="none">none detected</div>';
-    refsHtml += '<h4 style="margin-top:10px;">Referenced by (' + ins.length + ')</h4>';
-    refsHtml += ins.length
-      ? ins.map(id => `<a class="ref-item" data-id="${escapeAttr(id)}">← ${escapeHtml(id)}</a>`).join('')
-      : '<div class="none">none detected</div>';
+    // Long lists start collapsed; short (or empty) lists start open.
+    const outOpen = outs.length > 0 && outs.length <= 8;
+    const inOpen = ins.length > 0 && ins.length <= 8;
+    let refsHtml = '<button class="expand-all" data-action="expand">Expand all</button>'
+      + '<button class="expand-all" data-action="collapse" style="margin-left:10px;">Collapse all</button>';
+    refsHtml += refSection('References', outs, '→', outOpen);
+    refsHtml += refSection('Referenced by', ins, '←', inOpen);
     refsEl.innerHTML = refsHtml;
     refsEl.querySelectorAll('.ref-item').forEach(el => {
       el.addEventListener('click', () => {
         const target = simNodes.find(n => n.id === el.dataset.id);
         if (target) selectNode(target);
+      });
+    });
+    refsEl.querySelectorAll('.expand-all').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const open = btn.dataset.action === 'expand';
+        refsEl.querySelectorAll('details.ref-section').forEach(el => { el.open = open; });
       });
     });
 
@@ -460,6 +540,17 @@ function runCodemap(data) {
     }
 
     panel.classList.add('open');
+  }
+
+  function refSection(title, ids, arrow, openByDefault) {
+    const body = ids.length
+      ? ids.map(id => `<a class="ref-item" data-id="${escapeAttr(id)}">${arrow} ${escapeHtml(id)}</a>`).join('')
+      : '<div class="none">none detected</div>';
+    const openAttr = (openByDefault || ids.length === 0) ? ' open' : '';
+    return `<details class="ref-section"${openAttr}>
+      <summary>${escapeHtml(title)} <span class="count-badge">${ids.length}</span></summary>
+      <div class="ref-list">${body}</div>
+    </details>`;
   }
 
   function addMeta(container, label, value) {

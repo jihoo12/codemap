@@ -45,7 +45,8 @@ Then open the generated HTML file in any browser.
 ## Controls in the diagram
 
 - **Drag** a node to reposition it (the layout re-settles around it).
-- **Scroll / pinch** to zoom, **drag background** to pan, "Reset view" button to recenter.
+- **Scroll / pinch** to zoom, **drag background** to pan.
+- The view **auto-fits to the whole diagram** once the layout settles; use **"Fit view"** any time to re-center and re-fit (handy after you've zoomed/panned around, or dragged nodes far off-screen).
 - **Click a node** to see its content, outgoing references, and incoming references.
 - **Click a reference** in the side panel to jump straight to that file's node.
 - **Type in the filter box** to dim everything except matching files.
@@ -69,6 +70,3 @@ unusual syntax — treat the arrows as a helpful map, not ground truth.
 
 Both files need to stay in the same folder (the script reads
 `template.html` next to itself).
-
-## LICENSE
-[LICENSE](LICENSE)
