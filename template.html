@@ -4,7 +4,6 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Codemap</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
 <style>
   :root {
     --bg: #0f1115;
@@ -18,13 +17,8 @@
     --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
     --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
   }
-  * { box-sizing: border-box; }
-  html, body {
-    margin: 0; padding: 0; height: 100%;
-    background: var(--bg); color: var(--text);
-    font-family: var(--sans);
-    overflow: hidden;
-  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans); overflow: hidden; }
   #app { display: flex; flex-direction: column; height: 100vh; }
 
   header {
@@ -32,13 +26,9 @@
     padding: 10px 16px;
     border-bottom: 1px solid var(--border);
     background: var(--panel);
-    flex-shrink: 0;
-    z-index: 5;
+    flex-shrink: 0; z-index: 5;
   }
-  header h1 {
-    font-size: 15px; font-weight: 600; margin: 0;
-    letter-spacing: 0.2px;
-  }
+  header h1 { font-size: 15px; font-weight: 600; }
   header .sub { color: var(--text-dim); font-size: 12px; }
   header .spacer { flex: 1; }
   header input[type="text"] {
@@ -47,62 +37,65 @@
     font-size: 13px; width: 220px; outline: none;
   }
   header input[type="text"]:focus { border-color: var(--accent); }
-  header button {
-    background: var(--panel-2); border: 1px solid var(--border);
-    color: var(--text); border-radius: 6px; padding: 6px 10px;
-    font-size: 12px; cursor: pointer;
-  }
-  header button:hover { border-color: var(--accent); color: var(--accent); }
   #search-wrap { display: flex; align-items: center; gap: 8px; }
-  #search-count { font-size: 11px; color: var(--text-dim); white-space: nowrap; min-width: 0; }
+  #search-count { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
 
   #main { flex: 1; position: relative; overflow: hidden; }
-  #canvas-wrap { position: absolute; inset: 0; }
-  svg#graph { width: 100%; height: 100%; cursor: grab; }
-  svg#graph:active { cursor: grabbing; }
-
-  .group-hull {
-    fill-opacity: 0.10;
-    stroke-opacity: 0.55;
-    stroke-width: 1.5px;
+  #viewport {
+    position: absolute; inset: 0; overflow: hidden; cursor: grab;
   }
-  .group-label {
-    font-size: 11px;
-    font-family: var(--mono);
-    fill: var(--text-dim);
-    pointer-events: none;
+  #viewport.dragging { cursor: grabbing; }
+  #world {
+    position: absolute; top: 0; left: 0;
+    transform-origin: 0 0;
+    will-change: transform;
+  }
+
+  .group {
+    position: absolute;
+    border-radius: 8px;
+    border: 1.5px solid;
+  }
+  .group-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 12px;
+    border-radius: 7px 7px 0 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .group-name {
+    font-family: var(--mono); font-size: 13px; font-weight: 600;
+    color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: 60%;
+  }
+  .group-meta {
+    font-family: var(--mono); font-size: 10px; color: var(--text-dim);
+    white-space: nowrap;
+  }
+  .group-toggle {
+    font-family: var(--mono); font-size: 11px; color: var(--text-dim);
+    cursor: pointer; padding: 2px 4px; border-radius: 3px;
+    flex-shrink: 0;
+  }
+  .group-toggle:hover { color: var(--accent); background: rgba(255,255,255,0.05); }
+
+  .file {
+    position: absolute;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 5px;
+    font-family: var(--mono); font-size: 11px; color: #fff;
+    cursor: pointer; text-align: center;
+    padding: 0 6px;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+    transition: filter 0.1s, transform 0.1s;
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    border: 1.5px solid rgba(0,0,0,0.25);
     user-select: none;
   }
-
-  .link {
-    stroke: #5fb3ff;
-    stroke-opacity: 0.35;
-    fill: none;
-  }
-  .link.highlight { stroke-opacity: 0.95; stroke-width: 2px; }
-  .link.dimmed { stroke-opacity: 0.06; }
-
-  .node circle {
-    stroke: rgba(0,0,0,0.4);
-    stroke-width: 1px;
-    cursor: pointer;
-  }
-  .node text {
-    font-size: 10px;
-    font-family: var(--mono);
-    fill: var(--text);
-    pointer-events: none;
-    paint-order: stroke;
-    stroke: var(--bg);
-    stroke-width: 3px;
-  }
-  .node.dimmed { opacity: 0.15; }
-  .node.selected circle { stroke: var(--accent-2); stroke-width: 3px; }
-  .node.dir-node circle { cursor: pointer; }
-  circle.dir-circle { stroke-dasharray: 3,2; }
-  .dir-plus { font-size: 13px; fill: var(--text); pointer-events: none; font-weight: 700; }
-  .group-label.collapsible { cursor: pointer; }
-  .group-label.collapsible:hover { fill: var(--accent); }
+  .file:hover { filter: brightness(1.2); transform: scale(1.03); }
+  .file.selected { outline: 2.5px solid var(--accent-2); outline-offset: -1px; }
+  .file.dimmed { opacity: 0.12; }
+  .group.dimmed { opacity: 0.12; }
 
   #panel {
     position: absolute; top: 0; right: 0; bottom: 0;
@@ -152,7 +145,7 @@
   #panel .refs summary:hover { color: var(--text); }
   #panel .refs summary::-webkit-details-marker { display: none; }
   #panel .refs summary::before {
-    content: '▶'; font-size: 8px; display: inline-block;
+    content: '\25b6'; font-size: 8px; display: inline-block;
     transition: transform 0.15s ease; color: var(--text-dim); flex-shrink: 0;
   }
   #panel .refs details[open] > summary::before { transform: rotate(90deg); }
@@ -173,7 +166,7 @@
     font-size: 10px; cursor: pointer; padding: 4px 0; text-decoration: underline;
   }
   #panel .refs .expand-all:hover { color: var(--accent); }
-  #panel .content-wrap { flex: 1; overflow: auto; padding: 0; }
+  #panel .content-wrap { flex: 1; overflow: auto; }
   #panel pre {
     margin: 0; padding: 14px; font-family: var(--mono);
     font-size: 12px; line-height: 1.55; white-space: pre-wrap;
@@ -182,17 +175,6 @@
   #panel .binary-note, #panel .empty-note {
     padding: 20px 14px; color: var(--text-dim); font-size: 13px; font-style: italic;
   }
-
-  #legend {
-    position: absolute; left: 14px; bottom: 14px;
-    background: var(--panel); border: 1px solid var(--border);
-    border-radius: 8px; padding: 10px 12px; font-size: 11px;
-    max-height: 40vh; overflow: auto; max-width: 260px;
-    z-index: 4;
-  }
-  #legend h4 { margin: 0 0 6px; font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.4px; }
-  #legend .item { display: flex; align-items: center; gap: 6px; padding: 2px 0; color: var(--text-dim); }
-  #legend .swatch { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
 
   #empty-state {
     position: absolute; inset: 0; display: flex; align-items: center;
@@ -215,706 +197,571 @@
       <input type="text" id="search" placeholder="Filter files... ( / )" />
       <span id="search-count"></span>
     </div>
-    <button id="expand-all">Expand all</button>
-    <button id="collapse-all">Collapse all</button>
-    <button id="reset-zoom">Fit view</button>
   </header>
   <div id="main">
-    <div id="canvas-wrap">
-      <svg id="graph"></svg>
+    <div id="viewport">
+      <div id="world"></div>
     </div>
-    <div id="legend"></div>
     <div id="panel">
       <div class="panel-header">
         <div class="titles">
-          <div class="fname" id="p-fname">—</div>
-          <div class="fdir" id="p-fdir">—</div>
+          <div class="fname" id="p-fname">&mdash;</div>
+          <div class="fdir" id="p-fdir">&mdash;</div>
         </div>
-        <button class="close-btn" id="p-close">✕</button>
+        <button class="close-btn" id="p-close">&#x2715;</button>
       </div>
       <div class="meta-row" id="p-meta"></div>
       <div class="refs" id="p-refs"></div>
       <div class="content-wrap" id="p-content"></div>
     </div>
-    <div id="empty-state" style="display:none;">No files found (everything may be excluded by .gitignore).</div>
+    <div id="empty-state" style="display:none;">No files found.</div>
   </div>
 </div>
 
 <script>
 const DATA = /*__CODEMAP_DATA__*/;
 
-// Projects larger than this many files start fully collapsed to top-level
-// folders; smaller projects render flat (every file visible), matching the
-// previous behavior exactly.
-const AUTO_COLLAPSE_THRESHOLD = 150;
-// Confirm before expanding everything on projects bigger than this.
-const EXPAND_ALL_WARN_THRESHOLD = 600;
+const COLLAPSE_THRESHOLD = 150;
+const FILE_W = 130;
+const FILE_H = 32;
+const FILE_GAP = 8;
+const FILES_PER_ROW = 3;
+const GROUP_PAD = 14;
+const GROUP_HEADER_H = 32;
+const GROUP_GAP = 24;
+
+const GROUP_COLORS = [
+  '#5fb3ff','#ffb454','#c5a3ff','#7fdbca','#ff6b6b',
+  '#a8e6cf','#ffd93d','#6bcb77','#4d96ff','#ff6f91',
+  '#845ec2','#ff9671','#ffc75f','#f9f871','#00c9a7',
+  '#c34a36','#008f7a','#ffc0d0','#ff8066','#b0a8ff',
+];
+
+const DIR_COLOR = {};
+let colorIdx = 0;
+function getColor(dir) {
+  if (!DIR_COLOR[dir]) {
+    DIR_COLOR[dir] = GROUP_COLORS[colorIdx % GROUP_COLORS.length];
+    colorIdx++;
+  }
+  return DIR_COLOR[dir];
+}
+
+const EXT_COLORS = {
+  '.js':'#f1e05a','.jsx':'#f1e05a','.ts':'#3178c6','.tsx':'#3178c6',
+  '.py':'#3572A5','.json':'#8bc34a','.md':'#888','.html':'#e34c26',
+  '.css':'#563d7c','.scss':'#c6538c','.java':'#b07219','.go':'#00ADD8',
+  '.rb':'#701516','.php':'#4F5D95','.c':'#555','.cpp':'#f34b7d',
+  '.rs':'#dea584','.yml':'#cb171e','.yaml':'#cb171e','.sh':'#89e051',
+};
+
+function extColor(ext) { return EXT_COLORS[ext] || '#8b93a3'; }
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function fmtBytes(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n/1024).toFixed(1) + ' KB';
+  return (n/1048576).toFixed(1) + ' MB';
+}
 
 document.getElementById('proj-title').textContent = DATA.projectName || 'Codemap';
 document.getElementById('proj-sub').textContent =
-  DATA.nodes.length + ' files · ' + DATA.dirs.length + ' directories · ' + DATA.edges.length + ' references';
+  DATA.nodes.length + ' files \u00b7 ' + DATA.dirs.length + ' directories \u00b7 ' + DATA.edges.length + ' references';
 
 if (!DATA.nodes.length) {
   document.getElementById('empty-state').style.display = 'flex';
 } else {
-  runCodemap(DATA);
+  run(DATA);
 }
 
-function runCodemap(data) {
-  const nodesById = new Map(data.nodes.map(n => [n.id, n]));
+function run(data) {
+  const byId = new Map(data.nodes.map(n => [n.id, n]));
+  const tree = buildTree(data);
+  const stats = dirStats(tree, byId);
 
-  // ---- directory tree (for progressive disclosure) ----
-  const dirTree = buildTree(data);
-  const dirStats = computeDirStats(dirTree, nodesById);
-
-  function buildTree(data) {
+  function buildTree(d) {
     const dirs = new Map();
-    dirs.set('', { id: '', name: '(root)', parent: null, childDirs: [], files: [] });
-    function ensureDir(p) {
+    dirs.set('', { id:'', name:'(root)', parent:null, childDirs:[], files:[] });
+    function ensure(p) {
       if (dirs.has(p)) return dirs.get(p);
-      const idx = p.lastIndexOf('/');
-      const parentPath = idx === -1 ? '' : p.slice(0, idx);
-      const name = idx === -1 ? p : p.slice(idx + 1);
-      const parent = ensureDir(parentPath);
-      const node = { id: p, name, parent: parentPath, childDirs: [], files: [] };
-      dirs.set(p, node);
-      parent.childDirs.push(p);
-      return node;
+      const i = p.lastIndexOf('/');
+      const pp = i === -1 ? '' : p.slice(0, i);
+      const nm = i === -1 ? p : p.slice(i+1);
+      const par = ensure(pp);
+      const nd = { id:p, name:nm, parent:pp, childDirs:[], files:[] };
+      dirs.set(p, nd);
+      par.childDirs.push(p);
+      return nd;
     }
-    for (const d of data.dirs) { if (d !== '') ensureDir(d); }
-    for (const n of data.nodes) {
-      const dnode = ensureDir(n.dir);
-      dnode.files.push(n.id);
-    }
+    for (const dd of d.dirs) { if (dd !== '') ensure(dd); }
+    for (const n of d.nodes) ensure(n.dir).files.push(n.id);
     return dirs;
   }
 
-  function computeDirStats(dirs, nodesById) {
-    const stats = new Map();
-    function compute(path) {
-      if (stats.has(path)) return stats.get(path);
-      const dnode = dirs.get(path);
-      let fileCount = dnode.files.length;
-      let totalSize = 0;
-      for (const fid of dnode.files) {
-        const f = nodesById.get(fid);
-        totalSize += (f && f.size) || 0;
-      }
-      for (const cp of dnode.childDirs) {
-        const s = compute(cp);
-        fileCount += s.fileCount;
-        totalSize += s.totalSize;
-      }
-      const s = { fileCount, totalSize };
-      stats.set(path, s);
-      return s;
+  function dirStats(tr, byId) {
+    const m = new Map();
+    function go(p) {
+      if (m.has(p)) return m.get(p);
+      const nd = tr.get(p);
+      let fc = nd.files.length, sz = 0;
+      for (const f of nd.files) { const n = byId.get(f); sz += (n && n.size) || 0; }
+      for (const c of nd.childDirs) { const s = go(c); fc += s.fc; sz += s.sz; }
+      const r = { fc, sz }; m.set(p, r); return r;
     }
-    for (const path of dirs.keys()) compute(path);
-    return stats;
+    for (const p of tr.keys()) go(p);
+    return m;
   }
 
-  // Which directories currently show their contents (vs. being collapsed
-  // into a single folder supernode). Root is always "expanded" implicitly.
-  let expandedDirs = data.nodes.length <= AUTO_COLLAPSE_THRESHOLD
-    ? new Set(dirTree.keys())
+  let expanded = data.nodes.length <= COLLAPSE_THRESHOLD
+    ? new Set(tree.keys())
     : new Set(['']);
 
-  const startedCollapsed = data.nodes.length > AUTO_COLLAPSE_THRESHOLD;
-  if (startedCollapsed) {
-    document.getElementById('proj-sub').textContent += ' · large project — click a folder to expand it';
-  }
-
-  // Walks the tree, emitting one entry per *visible* thing: either a
-  // collapsed directory (if it isn't expanded) or, for expanded
-  // directories, their direct files plus their child directories
-  // (recursing further only into ones that are themselves expanded).
-  function collectVisible(path, out) {
-    const dnode = dirTree.get(path);
-    for (const childPath of dnode.childDirs) {
-      if (expandedDirs.has(childPath)) {
-        collectVisible(childPath, out);
-      } else {
-        out.push({ type: 'dir', id: childPath });
-      }
-    }
-    for (const fileId of dnode.files) {
-      out.push({ type: 'file', id: fileId });
-    }
-  }
-
-  // Given a file id, finds the entity currently representing it on screen:
-  // itself, if every ancestor directory down to its own is expanded, or
-  // else the topmost collapsed ancestor directory.
-  function visibleEntityForFile(fileId) {
-    const f = nodesById.get(fileId);
-    const parts = f.dir === '' ? [] : f.dir.split('/');
-    let path = '';
-    for (const part of parts) {
-      path = path === '' ? part : path + '/' + part;
-      if (!expandedDirs.has(path)) return { type: 'dir', id: path };
-    }
-    return { type: 'file', id: fileId };
-  }
-
-  function computeVisibleGraph() {
-    const rawEntities = [];
-    collectVisible('', rawEntities);
-
-    const entities = rawEntities.map(e => {
-      const key = e.type + ':' + e.id;
-      if (e.type === 'file') {
-        const f = nodesById.get(e.id);
-        return {
-          key, type: 'file', id: e.id, name: f.name, dir: f.dir, ext: f.ext,
-          size: f.size, binary: f.binary, truncated: f.truncated, content: f.content,
-        };
-      }
-      const dnode = dirTree.get(e.id);
-      const stats = dirStats.get(e.id);
-      return {
-        key, type: 'dir', id: e.id, name: dnode.name, dir: dnode.parent,
-        fileCount: stats.fileCount, size: stats.totalSize,
-      };
-    });
-
-    const edgeMap = new Map();
-    for (const e of data.edges) {
-      if (!nodesById.has(e.from) || !nodesById.has(e.to)) continue;
-      const src = visibleEntityForFile(e.from);
-      const tgt = visibleEntityForFile(e.to);
-      const srcKey = src.type + ':' + src.id;
-      const tgtKey = tgt.type + ':' + tgt.id;
-      if (srcKey === tgtKey) continue; // internal to a collapsed folder
-      const ekey = srcKey + '=>' + tgtKey;
-      if (!edgeMap.has(ekey)) edgeMap.set(ekey, { source: srcKey, target: tgtKey, count: 0 });
-      edgeMap.get(ekey).count++;
-    }
-
-    return { entities, edges: Array.from(edgeMap.values()) };
-  }
-
-  function toggleExpand(path, expand) {
-    if (expand) {
-      expandedDirs.add(path);
-    } else if (path !== '') {
-      const prefix = path + '/';
-      for (const p of Array.from(expandedDirs)) {
-        if (p === path || p.startsWith(prefix)) expandedDirs.delete(p);
-      }
-    }
-    rebuildGraph(false);
-  }
-
-  // outgoing/incoming refs are computed once from the *full* dataset so the
-  // side panel always shows true file-level references, regardless of
-  // what's currently collapsed on screen.
-  const outgoing = new Map(), incoming = new Map();
-  for (const n of data.nodes) { outgoing.set(n.id, []); incoming.set(n.id, []); }
+  const outMap = new Map(), inMap = new Map();
+  for (const n of data.nodes) { outMap.set(n.id, []); inMap.set(n.id, []); }
   for (const e of data.edges) {
-    if (!outgoing.has(e.from) || !incoming.has(e.to)) continue;
-    outgoing.get(e.from).push(e.to);
-    incoming.get(e.to).push(e.from);
+    if (outMap.has(e.from) && inMap.has(e.to)) {
+      outMap.get(e.from).push(e.to);
+      inMap.get(e.to).push(e.from);
+    }
   }
 
-  // ---- color scales ----
-  const groupColor = d3.scaleOrdinal()
-    .domain(data.dirs.length ? data.dirs : [''])
-    .range(d3.schemeTableau10.concat(d3.schemeSet3).concat(d3.schemePastel1));
+  const viewport = document.getElementById('viewport');
+  const world = document.getElementById('world');
+  let tx = 0, ty = 0, scale = 1;
+  let dragging = false, dragStartX, dragStartY, dragTx, dragTy;
+  let selectedId = null;
 
-  function extColor(ext) {
-    const palette = {
-      '.js': '#f1e05a', '.jsx': '#f1e05a', '.ts': '#3178c6', '.tsx': '#3178c6',
-      '.py': '#3572A5', '.json': '#8bc34a', '.md': '#b0b0b0', '.html': '#e34c26',
-      '.css': '#563d7c', '.scss': '#c6538c', '.java': '#b07219', '.go': '#00ADD8',
-      '.rb': '#701516', '.php': '#4F5D95', '.c': '#555555', '.cpp': '#f34b7d',
-      '.rs': '#dea584', '.yml': '#cb171e', '.yaml': '#cb171e', '.sh': '#89e051',
-    };
-    return palette[ext] || '#8b93a3';
+  function applyTransform() {
+    world.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')';
   }
 
-  function nodeRadius(d) {
-    if (d.type === 'dir') return 10 + Math.min(22, Math.sqrt(d.fileCount) * 3);
-    const len = d.binary ? 0 : (d.content ? d.content.length : 0);
-    return 6 + Math.min(10, Math.sqrt(len) / 12);
+  function fitToContent() {
+    const r = world.getBoundingClientRect();
+    const vw = viewport.clientWidth, vh = viewport.clientHeight;
+    if (r.width < 1 || r.height < 1) return;
+    const pad = 60;
+    const sx = vw / (r.width + pad * 2);
+    const sy = vh / (r.height + pad * 2);
+    scale = Math.min(sx, sy, 1.5);
+    tx = (vw - r.width * scale) / 2 - r.left * scale;
+    ty = (vh - r.height * scale) / 2 - r.top * scale;
+    applyTransform();
   }
 
-  const svg = d3.select('#graph');
-  const wrap = document.getElementById('canvas-wrap');
-  let width = wrap.clientWidth, height = wrap.clientHeight;
-
-  const zoomLayer = svg.append('g').attr('class', 'zoom-layer');
-  const hullLayer = zoomLayer.append('g').attr('class', 'hulls');
-  const linkLayer = zoomLayer.append('g').attr('class', 'links');
-  const nodeLayer = zoomLayer.append('g').attr('class', 'nodes-layer');
-
-  svg.append('defs').append('marker')
-    .attr('id', 'arrow')
-    .attr('viewBox', '0 -5 10 10')
-    .attr('refX', 18)
-    .attr('refY', 0)
-    .attr('markerWidth', 7)
-    .attr('markerHeight', 7)
-    .attr('orient', 'auto')
-    .append('path')
-    .attr('d', 'M0,-5L10,0L0,5')
-    .attr('fill', '#5fb3ff');
-
-  const zoom = d3.zoom().scaleExtent([0.03, 6]).on('zoom', (ev) => {
-    zoomLayer.attr('transform', ev.transform);
+  viewport.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    dragging = true;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    dragTx = tx;
+    dragTy = ty;
+    viewport.classList.add('dragging');
   });
-  svg.call(zoom);
+  window.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    tx = dragTx + (e.clientX - dragStartX);
+    ty = dragTy + (e.clientY - dragStartY);
+    applyTransform();
+  });
+  window.addEventListener('mouseup', () => {
+    dragging = false;
+    viewport.classList.remove('dragging');
+  });
 
-  let simNodes = [];
-  let simNodesByKey = new Map();
-  let simLinks = [];
+  viewport.addEventListener('wheel', e => {
+    e.preventDefault();
+    const rect = viewport.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    const ns = Math.min(6, Math.max(0.05, scale * delta));
+    tx = mx - (mx - tx) * (ns / scale);
+    ty = my - (my - ty) * (ns / scale);
+    scale = ns;
+    applyTransform();
+  }, { passive: false });
 
-  let hasAutoFit = false;
-  function fitToContent(duration) {
-    if (!simNodes.length) return;
-    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-    for (const n of simNodes) {
-      const r = nodeRadius(n) + HULL_PADDING + 20;
-      if (n.x - r < x0) x0 = n.x - r;
-      if (n.x + r > x1) x1 = n.x + r;
-      if (n.y - r < y0) y0 = n.y - r;
-      if (n.y + r > y1) y1 = n.y + r;
+  let lastTouchDist = 0;
+  viewport.addEventListener('touchstart', e => {
+    if (e.touches.length === 1) {
+      dragging = true;
+      dragStartX = e.touches[0].clientX;
+      dragStartY = e.touches[0].clientY;
+      dragTx = tx; dragTy = ty;
+    } else if (e.touches.length === 2) {
+      dragging = false;
+      const dx = e.touches[1].clientX - e.touches[0].clientX;
+      const dy = e.touches[1].clientY - e.touches[0].clientY;
+      lastTouchDist = Math.sqrt(dx*dx + dy*dy);
     }
-    const bw = Math.max(1, x1 - x0), bh = Math.max(1, y1 - y0);
-    const scale = Math.max(zoom.scaleExtent()[0], Math.min(zoom.scaleExtent()[1], 0.9 / Math.max(bw / width, bh / height)));
-    const tx = width / 2 - scale * (x0 + bw / 2);
-    const ty = height / 2 - scale * (y0 + bh / 2);
-    const t = d3.zoomIdentity.translate(tx, ty).scale(scale);
-    if (duration) svg.transition().duration(duration).call(zoom.transform, t);
-    else svg.call(zoom.transform, t);
-  }
-  document.getElementById('reset-zoom').addEventListener('click', () => fitToContent(400));
-
-  const HULL_PADDING = 20;
-
-  const simulation = d3.forceSimulation([])
-    .force('link', d3.forceLink([]).id(d => d.key).distance(70).strength(0.15))
-    .force('charge', d3.forceManyBody().strength(-70))
-    .force('collide', d3.forceCollide().radius(d => nodeRadius(d) + 6))
-    .force('center', d3.forceCenter(width / 2, height / 2))
-    .force('cluster', clusterForce())
-    .on('tick', ticked)
-    .on('end', () => { if (!hasAutoFit) { hasAutoFit = true; fitToContent(500); } });
-
-  function clusterForce() {
-    let nodes;
-    function force(alpha) {
-      const groups = new Map();
-      for (const n of nodes) {
-        if (!groups.has(n.dir)) groups.set(n.dir, { x: 0, y: 0, count: 0, members: [] });
-        const g = groups.get(n.dir);
-        g.x += n.x; g.y += n.y; g.count++; g.members.push(n);
+  }, { passive: true });
+  viewport.addEventListener('touchmove', e => {
+    e.preventDefault();
+    if (e.touches.length === 1 && dragging) {
+      tx = dragTx + (e.touches[0].clientX - dragStartX);
+      ty = dragTy + (e.touches[0].clientY - dragStartY);
+      applyTransform();
+    } else if (e.touches.length === 2) {
+      const dx = e.touches[1].clientX - e.touches[0].clientX;
+      const dy = e.touches[1].clientY - e.touches[0].clientY;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (lastTouchDist > 0) {
+        const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        const ns = Math.min(6, Math.max(0.05, scale * (dist / lastTouchDist)));
+        tx = midX - (midX - tx) * (ns / scale);
+        ty = midY - (midY - ty) * (ns / scale);
+        scale = ns;
+        applyTransform();
       }
-      for (const g of groups.values()) { g.x /= g.count; g.y /= g.count; }
-
-      const k = alpha * 0.4;
-      for (const n of nodes) {
-        const g = groups.get(n.dir);
-        n.vx += (g.x - n.x) * k;
-        n.vy += (g.y - n.y) * k;
-      }
-
-      for (const g of groups.values()) {
-        let maxD = 0;
-        for (const n of g.members) {
-          const dx = n.x - g.x, dy = n.y - g.y;
-          const d = Math.sqrt(dx * dx + dy * dy);
-          if (d > maxD) maxD = d;
-        }
-        g.radius = maxD + HULL_PADDING;
-      }
-
-      const groupList = Array.from(groups.values());
-      for (let i = 0; i < groupList.length; i++) {
-        for (let j = i + 1; j < groupList.length; j++) {
-          const gA = groupList[i], gB = groupList[j];
-          const dx = gB.x - gA.x, dy = gB.y - gA.y;
-          const dist = Math.sqrt(dx * dx + dy * dy) || 0.001;
-          const minDist = gA.radius + gB.radius + 12;
-          if (dist < minDist) {
-            const push = ((minDist - dist) / dist) * alpha * 0.9;
-            const ox = dx * push, oy = dy * push;
-            for (const n of gA.members) { n.vx -= ox; n.vy -= oy; }
-            for (const n of gB.members) { n.vx += ox; n.vy += oy; }
-          }
-        }
-      }
+      lastTouchDist = dist;
     }
-    force.initialize = (ns) => { nodes = ns; };
-    return force;
+  }, { passive: false });
+  viewport.addEventListener('touchend', () => { dragging = false; lastTouchDist = 0; });
+
+  const searchEl = document.getElementById('search');
+  const searchCountEl = document.getElementById('search-count');
+  document.addEventListener('keydown', e => {
+    if (e.key === '/' && document.activeElement !== searchEl) { e.preventDefault(); searchEl.focus(); }
+    if (e.key === 'Escape') closePanel();
+  });
+  let searchTimer;
+  searchEl.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(doSearch, 120); });
+  searchEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      const q = searchEl.value.trim().toLowerCase();
+      const ids = matchIds(q);
+      if (ids.size) revealFile(ids.values().next().value);
+    }
+  });
+
+  function matchIds(q) {
+    const s = new Set();
+    if (!q) return s;
+    for (const n of data.nodes) {
+      if (n.name.toLowerCase().includes(q) || n.dir.toLowerCase().includes(q)) s.add(n.id);
+    }
+    return s;
   }
 
-  let node = nodeLayer.selectAll('g.node');
-  let link = linkLayer.selectAll('path.link');
-
-  function rebuildGraph(initial) {
-    const { entities, edges } = computeVisibleGraph();
-    const prevByKey = simNodesByKey;
-
-    simNodes = entities.map(e => {
-      const prev = prevByKey.get(e.key);
-      if (prev) return Object.assign(prev, e);
-      // Seed brand-new nodes near the middle so they drift into place
-      // instead of starting from a random spot across the whole canvas.
-      return Object.assign({
-        x: width / 2 + (Math.random() - 0.5) * 120,
-        y: height / 2 + (Math.random() - 0.5) * 120,
-      }, e);
+  function doSearch() {
+    const q = searchEl.value.trim().toLowerCase();
+    const ids = matchIds(q);
+    world.querySelectorAll('.file').forEach(el => {
+      el.classList.toggle('dimmed', q && !ids.has(el.dataset.id));
     });
-    simNodesByKey = new Map(simNodes.map(n => [n.key, n]));
-
-    simLinks = edges
-      .filter(e => simNodesByKey.has(e.source) && simNodesByKey.has(e.target))
-      .map(e => ({ source: e.source, target: e.target, count: e.count }));
-
-    simulation.nodes(simNodes);
-    simulation.force('link', d3.forceLink(simLinks).id(d => d.key).distance(70).strength(0.15));
-    simulation.force('collide', d3.forceCollide().radius(d => nodeRadius(d) + 6));
-
-    updateSelections();
-    updateLegend();
-    if (document.getElementById('search').value.trim()) applySearch();
-
-    simulation.alpha(initial ? 1 : 0.6).restart();
-  }
-
-  function updateSelections() {
-    link = linkLayer.selectAll('path.link')
-      .data(simLinks, d => d.source + '=>' + d.target)
-      .join('path')
-      .attr('class', 'link')
-      .attr('marker-end', 'url(#arrow)');
-
-    const nodeSel = nodeLayer.selectAll('g.node')
-      .data(simNodes, d => d.key);
-
-    nodeSel.exit().remove();
-
-    const nodeEnter = nodeSel.enter().append('g')
-      .call(d3.drag()
-        .on('start', (ev, d) => { if (!ev.active) simulation.alphaTarget(0.2).restart(); d.fx = d.x; d.fy = d.y; })
-        .on('drag', (ev, d) => { d.fx = ev.x; d.fy = ev.y; })
-        .on('end', (ev, d) => { if (!ev.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }))
-      .on('click', (ev, d) => {
-        ev.stopPropagation();
-        if (d.type === 'dir') toggleExpand(d.id, true);
-        else selectNode(d);
-      });
-
-    nodeEnter.append('circle');
-    nodeEnter.append('text').attr('class', 'file-label');
-    nodeEnter.append('title');
-
-    node = nodeEnter.merge(nodeSel);
-    node.attr('class', d => 'node' + (d.type === 'dir' ? ' dir-node' : ''));
-
-    node.select('circle')
-      .attr('r', d => nodeRadius(d))
-      .attr('class', d => d.type === 'dir' ? 'dir-circle' : null)
-      .attr('fill', d => d.type === 'dir' ? groupColor(d.id) : extColor(d.ext))
-      .attr('stroke', d => d.type === 'dir' ? d3.color(groupColor(d.id)).darker(0.8) : d3.color(groupColor(d.dir)));
-
-    node.select('text.file-label')
-      .attr('dy', d => nodeRadius(d) + 11)
-      .attr('text-anchor', 'middle')
-      .text(d => d.type === 'dir'
-        ? (d.name.length > 16 ? d.name.slice(0, 14) + '…' : d.name) + '/ (' + d.fileCount + ')'
-        : (d.name.length > 18 ? d.name.slice(0, 16) + '…' : d.name));
-
-    node.select('title')
-      .text(d => d.type === 'dir'
-        ? d.id + '/  —  ' + d.fileCount + ' file(s), ' + formatBytes(d.size) + ' — click to expand'
-        : d.dir + '/' + d.name);
-
-    // re-apply current selection/highlight state to the fresh join
-    node.classed('selected', d => d.type === 'file' && d.id === selectedId);
-    highlightLinks(selectedId);
-
-    svg.on('click', () => closePanel());
-  }
-
-  function ticked() {
-    link.attr('d', d => {
-      const dx = d.target.x - d.source.x, dy = d.target.y - d.source.y;
-      const dr = Math.sqrt(dx * dx + dy * dy) * 1.6;
-      return `M${d.source.x},${d.source.y}A${dr},${dr} 0 0,1 ${d.target.x},${d.target.y}`;
-    });
-    node.attr('transform', d => `translate(${d.x},${d.y})`);
-    drawHulls();
-  }
-
-  function drawHulls() {
-    const byDir = new Map();
-    for (const n of simNodes) {
-      if (!byDir.has(n.dir)) byDir.set(n.dir, []);
-      byDir.get(n.dir).push([n.x, n.y]);
-    }
-    const hullData = [];
-    for (const [dir, pts] of byDir) {
-      let hull;
-      if (pts.length < 3) {
-        const [x, y] = pts[0];
-        hull = pts.length === 2
-          ? [pts[0], pts[1], [x + 20, y + 20]]
-          : [[x - 20, y - 20], [x + 20, y - 20], [x, y + 20]];
-      } else {
-        hull = d3.polygonHull(pts);
+    world.querySelectorAll('.group').forEach(el => {
+      if (!q) { el.classList.remove('dimmed'); return; }
+      const dp = el.dataset.dir;
+      let hit = false;
+      for (const fid of ids) {
+        const f = byId.get(fid);
+        if (f && (f.dir === dp || (dp && f.dir.startsWith(dp + '/')))) { hit = true; break; }
       }
-      if (!hull) continue;
-      const centroid = d3.polygonCentroid(hull);
-      const padded = hull.map(p => {
-        const dx = p[0] - centroid[0], dy = p[1] - centroid[1];
-        const len = Math.sqrt(dx * dx + dy * dy) || 1;
-        return [p[0] + (dx / len) * HULL_PADDING, p[1] + (dy / len) * HULL_PADDING];
-      });
-      hullData.push({ dir, path: 'M' + padded.map(p => p.join(',')).join('L') + 'Z', top: d3.min(padded, p => p[1]), cx: centroid[0] });
+      el.classList.toggle('dimmed', !hit);
+    });
+    searchCountEl.textContent = ids.size
+      ? ids.size + (ids.size === 1 ? ' match' : ' matches') + ' \u2014 Enter to jump'
+      : (q ? 'no matches' : '');
+  }
+
+  // ==================== LAYOUT ENGINE ====================
+  // Pass 1: bottom-up compute sizes -> sizeMap
+  // Pass 2: top-down assign positions using sizeMap
+
+  const sizeMap = new Map();
+  const MAX_CHILD_ROW_W = 1400;
+
+  function computeAllSizes(dirPath) {
+    const nd = tree.get(dirPath);
+    const isExp = expanded.has(dirPath);
+
+    let filesW = 0, filesH = 0;
+    if (isExp && nd.files.length > 0) {
+      const cols = Math.min(nd.files.length, FILES_PER_ROW);
+      const rows = Math.ceil(nd.files.length / FILES_PER_ROW);
+      filesW = cols * FILE_W + (cols - 1) * FILE_GAP;
+      filesH = rows * FILE_H + (rows - 1) * FILE_GAP;
     }
 
-    const hullSel = hullLayer.selectAll('path.group-hull').data(hullData, d => d.dir);
-    hullSel.join('path')
-      .attr('class', 'group-hull')
-      .attr('fill', d => groupColor(d.dir))
-      .attr('stroke', d => groupColor(d.dir))
-      .attr('d', d => d.path);
+    const childRows = [];
+    if (isExp && nd.childDirs.length > 0) {
+      for (const c of nd.childDirs) computeAllSizes(c);
 
-    const labelSel = hullLayer.selectAll('text.group-label').data(hullData, d => d.dir);
-    labelSel.join('text')
-      .attr('class', d => 'group-label' + (d.dir === '' ? '' : ' collapsible'))
-      .attr('x', d => d.cx)
-      .attr('y', d => d.top - 8)
-      .attr('text-anchor', 'middle')
-      .text(d => (d.dir === '' ? '(root)' : d.dir) + (d.dir === '' ? '' : '  [–]'))
-      .on('click', (ev, d) => {
-        if (d.dir === '') return;
-        ev.stopPropagation();
-        toggleExpand(d.dir, false);
-      });
+      let curRow = [], curRowW = 0;
+      for (const c of nd.childDirs) {
+        const cs = sizeMap.get(c);
+        const gap = curRow.length > 0 ? GROUP_GAP : 0;
+        if (curRow.length > 0 && curRowW + gap + cs.w > MAX_CHILD_ROW_W) {
+          childRows.push({ dirs: curRow, w: curRowW, h: Math.max(...curRow.map(d => sizeMap.get(d).h)) });
+          curRow = []; curRowW = 0;
+        }
+        curRow.push(c);
+        curRowW += gap + cs.w;
+      }
+      if (curRow.length) {
+        childRows.push({ dirs: curRow, w: curRowW, h: Math.max(...curRow.map(d => sizeMap.get(d).h)) });
+      }
+    }
+
+    const childrenW = childRows.length > 0 ? Math.max(...childRows.map(r => r.w)) : 0;
+    const childrenH = childRows.reduce((s, r) => s + r.h, 0) + Math.max(0, childRows.length - 1) * GROUP_GAP;
+    const contentW = Math.max(filesW, childrenW);
+    const hasF = filesH > 0, hasC = childrenH > 0;
+    const innerH = filesH + (hasF && hasC ? GROUP_GAP : 0) + childrenH;
+
+    sizeMap.set(dirPath, {
+      w: contentW + GROUP_PAD * 2,
+      h: GROUP_HEADER_H + GROUP_PAD + innerH + GROUP_PAD,
+      filesW, filesH, childRows, contentW,
+    });
+  }
+
+  function positionGroup(dirPath, x, y) {
+    const sz = sizeMap.get(dirPath);
+    const nd = tree.get(dirPath);
+    const isExp = expanded.has(dirPath);
+    const results = [{ type: 'group', dir: dirPath, x, y, w: sz.w, h: sz.h }];
+    if (!isExp) return results;
+
+    let cy = y + GROUP_HEADER_H + GROUP_PAD;
+
+    if (nd.files.length > 0) {
+      const sorted = [...nd.files].sort((a, b) => (byId.get(a).name || '').localeCompare(byId.get(b).name || ''));
+      let idx = 0;
+      for (let row = 0; idx < sorted.length; row++) {
+        const colsInRow = Math.min(sorted.length - idx, FILES_PER_ROW);
+        const rowW = colsInRow * FILE_W + (colsInRow - 1) * FILE_GAP;
+        const rowOffX = (sz.contentW - rowW) / 2;
+        for (let col = 0; col < colsInRow; col++, idx++) {
+          results.push({ type: 'file', id: sorted[idx],
+            fx: x + GROUP_PAD + rowOffX + col * (FILE_W + FILE_GAP),
+            fy: cy + row * (FILE_H + FILE_GAP),
+          });
+        }
+      }
+      cy += sz.filesH;
+    }
+
+    if (sz.childRows.length > 0) {
+      if (sz.filesH > 0) cy += GROUP_GAP;
+      for (const cr of sz.childRows) {
+        const rowOffX = (sz.contentW - cr.w) / 2;
+        let cx = x + GROUP_PAD + rowOffX;
+        for (const dir of cr.dirs) {
+          results.push(...positionGroup(dir, cx, cy));
+          cx += sizeMap.get(dir).w + GROUP_GAP;
+        }
+        cy += cr.h + GROUP_GAP;
+      }
+    }
+
+    return results;
+  }
+
+  // ==================== RENDER ====================
+
+  function render() {
+    world.innerHTML = '';
+    sizeMap.clear();
+    computeAllSizes('');
+    const layout = positionGroup('', 0, 0);
+
+    for (const item of layout) {
+      if (item.type === 'group') {
+        const nd = tree.get(item.dir);
+        const st = stats.get(item.dir);
+        const isExp = expanded.has(item.dir);
+        const gc = getColor(item.dir);
+
+        const el = document.createElement('div');
+        el.className = 'group';
+        el.dataset.dir = item.dir;
+        el.style.left = item.x + 'px';
+        el.style.top = item.y + 'px';
+        el.style.width = item.w + 'px';
+        el.style.height = item.h + 'px';
+        el.style.borderColor = gc;
+        el.style.background = gc + '18';
+
+        const hdr = document.createElement('div');
+        hdr.className = 'group-header';
+        hdr.style.background = gc + '30';
+        hdr.style.height = GROUP_HEADER_H + 'px';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'group-name';
+        nameSpan.textContent = item.dir === '' ? '(root)' : nd.name;
+        hdr.appendChild(nameSpan);
+
+        const metaSpan = document.createElement('span');
+        metaSpan.className = 'group-meta';
+        metaSpan.textContent = st.fc + ' files \u00b7 ' + fmtBytes(st.sz);
+        hdr.appendChild(metaSpan);
+
+        if (item.dir !== '') {
+          const tog = document.createElement('span');
+          tog.className = 'group-toggle';
+          tog.textContent = isExp ? '\u2013' : '+';
+          tog.addEventListener('click', (function(dp) {
+            return function(e) {
+              e.stopPropagation();
+              if (expanded.has(dp)) expanded.delete(dp);
+              else expanded.add(dp);
+              render();
+            };
+          })(item.dir));
+          hdr.appendChild(tog);
+        }
+
+        el.appendChild(hdr);
+        world.appendChild(el);
+      } else if (item.type === 'file') {
+        const f = byId.get(item.id);
+        const fEl = document.createElement('div');
+        fEl.className = 'file';
+        fEl.dataset.id = item.id;
+        fEl.style.left = item.fx + 'px';
+        fEl.style.top = item.fy + 'px';
+        fEl.style.width = FILE_W + 'px';
+        fEl.style.height = FILE_H + 'px';
+        fEl.style.background = extColor(f.ext);
+        const displayName = f.name.length > 16 ? f.name.slice(0, 14) + '\u2026' : f.name;
+        fEl.textContent = displayName;
+        fEl.title = item.id;
+        fEl.addEventListener('click', (function(node) {
+          return function(e) {
+            e.stopPropagation();
+            selectFile(node);
+          };
+        })(f));
+        world.appendChild(fEl);
+      }
+    }
+
+    highlightSelected();
+    if (searchEl.value.trim()) doSearch();
+    setTimeout(fitToContent, 10);
   }
 
   // ---- side panel ----
   const panel = document.getElementById('panel');
-  let selectedId = null;
 
-  function selectNode(d) {
+  function selectFile(d) {
     selectedId = d.id;
-    node.classed('selected', n => n.type === 'file' && n.id === d.id);
-    highlightLinks(d.key);
+    document.querySelectorAll('.file.selected').forEach(e => e.classList.remove('selected'));
+    const el = world.querySelector('[data-id="' + CSS.escape(d.id) + '"]');
+    if (el) el.classList.add('selected');
+    highlightSelected();
 
     document.getElementById('p-fname').textContent = d.name;
     document.getElementById('p-fdir').textContent = d.dir === '' ? '/' : '/' + d.dir;
 
     const meta = document.getElementById('p-meta');
     meta.innerHTML = '';
-    addMeta(meta, 'size', formatBytes(d.size));
+    addMeta(meta, 'size', fmtBytes(d.size));
     addMeta(meta, 'type', d.ext || '(no ext)');
-    if (d.truncated) addMeta(meta, 'note', 'content truncated for display');
+    if (d.truncated) addMeta(meta, 'note', 'truncated');
 
     const refsEl = document.getElementById('p-refs');
-    const outs = outgoing.get(d.id) || [];
-    const ins = incoming.get(d.id) || [];
-    const outOpen = outs.length > 0 && outs.length <= 8;
-    const inOpen = ins.length > 0 && ins.length <= 8;
-    let refsHtml = '<button class="expand-all" data-action="expand">Expand all</button>'
-      + '<button class="expand-all" data-action="collapse" style="margin-left:10px;">Collapse all</button>';
-    refsHtml += refSection('References', outs, '→', outOpen);
-    refsHtml += refSection('Referenced by', ins, '←', inOpen);
-    refsEl.innerHTML = refsHtml;
-    refsEl.querySelectorAll('.ref-item').forEach(el => {
-      el.addEventListener('click', () => revealAndSelect(el.dataset.id));
+    const outs = outMap.get(d.id) || [];
+    const ins = inMap.get(d.id) || [];
+    let html = '<button class="expand-all" data-a="e">Expand all</button>'
+      + '<button class="expand-all" data-a="c" style="margin-left:10px;">Collapse all</button>';
+    html += refSec('References', outs, '\u2192', outs.length > 0 && outs.length <= 8);
+    html += refSec('Referenced by', ins, '\u2190', ins.length > 0 && ins.length <= 8);
+    refsEl.innerHTML = html;
+    refsEl.querySelectorAll('.ref-item').forEach(a => {
+      a.addEventListener('click', () => revealFile(a.dataset.id));
     });
-    refsEl.querySelectorAll('.expand-all').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const open = btn.dataset.action === 'expand';
-        refsEl.querySelectorAll('details.ref-section').forEach(el => { el.open = open; });
+    refsEl.querySelectorAll('.expand-all').forEach(b => {
+      b.addEventListener('click', () => {
+        const open = b.dataset.a === 'e';
+        refsEl.querySelectorAll('details.ref-section').forEach(d => { d.open = open; });
       });
     });
 
-    const contentEl = document.getElementById('p-content');
-    if (d.binary) {
-      contentEl.innerHTML = '<div class="binary-note">Binary file — content preview not available.</div>';
-    } else if (!d.content) {
-      contentEl.innerHTML = '<div class="empty-note">(empty file)</div>';
-    } else {
-      contentEl.innerHTML = '<pre></pre>';
-      contentEl.querySelector('pre').textContent = d.content;
-    }
+    const ce = document.getElementById('p-content');
+    if (d.binary) ce.innerHTML = '<div class="binary-note">Binary file.</div>';
+    else if (!d.content) ce.innerHTML = '<div class="empty-note">(empty)</div>';
+    else { ce.innerHTML = '<pre></pre>'; ce.querySelector('pre').textContent = d.content; }
 
     panel.classList.add('open');
   }
 
-  // Reveals a file that may currently be hidden inside a collapsed folder:
-  // expands every ancestor directory on its path, rebuilds the graph, then
-  // opens its panel. Used by reference links and search-jump.
-  function revealAndSelect(fileId) {
-    const f = nodesById.get(fileId);
+  function revealFile(fid) {
+    const f = byId.get(fid);
     if (!f) return;
     const parts = f.dir === '' ? [] : f.dir.split('/');
-    let path = '';
+    let p = '';
     for (const part of parts) {
-      path = path === '' ? part : path + '/' + part;
-      expandedDirs.add(path);
+      p = p === '' ? part : p + '/' + part;
+      expanded.add(p);
     }
-    rebuildGraph(false);
-    const target = simNodesByKey.get('file:' + fileId);
-    if (target) selectNode(target);
+    render();
+    const el = world.querySelector('[data-id="' + CSS.escape(fid) + '"]');
+    if (el) {
+      selectFile(f);
+      const r = el.getBoundingClientRect();
+      const vr = viewport.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      tx += vr.width / 2 - cx;
+      ty += vr.height / 2 - cy;
+      applyTransform();
+    }
   }
 
-  function refSection(title, ids, arrow, openByDefault) {
+  function refSec(title, ids, arrow, openDef) {
     const body = ids.length
-      ? ids.map(id => `<a class="ref-item" data-id="${escapeAttr(id)}">${arrow} ${escapeHtml(id)}</a>`).join('')
+      ? ids.map(id => '<a class="ref-item" data-id="' + esc(id) + '">' + arrow + ' ' + esc(id) + '</a>').join('')
       : '<div class="none">none detected</div>';
-    const openAttr = (openByDefault || ids.length === 0) ? ' open' : '';
-    return `<details class="ref-section"${openAttr}>
-      <summary>${escapeHtml(title)} <span class="count-badge">${ids.length}</span></summary>
-      <div class="ref-list">${body}</div>
-    </details>`;
+    return '<details class="ref-section"' + (openDef || !ids.length ? ' open' : '') + '>'
+      + '<summary>' + esc(title) + ' <span class="count-badge">' + ids.length + '</span></summary>'
+      + '<div class="ref-list">' + body + '</div></details>';
   }
 
-  function addMeta(container, label, value) {
-    const span = document.createElement('span');
-    span.innerHTML = '<strong style="color:var(--text)">' + escapeHtml(label) + ':</strong> ' + escapeHtml(String(value));
-    container.appendChild(span);
+  function addMeta(c, l, v) {
+    const s = document.createElement('span');
+    s.innerHTML = '<strong style="color:var(--text)">' + esc(l) + ':</strong> ' + esc(v);
+    c.appendChild(s);
   }
 
   document.getElementById('p-close').addEventListener('click', closePanel);
+  viewport.addEventListener('click', e => {
+    if (e.target === viewport || e.target === world) closePanel();
+  });
+
   function closePanel() {
     selectedId = null;
     panel.classList.remove('open');
-    node.classed('selected', false);
-    highlightLinks(null);
+    document.querySelectorAll('.file.selected').forEach(e => e.classList.remove('selected'));
+    highlightSelected();
   }
 
-  function highlightLinks(key) {
-    if (!key) {
-      link.classed('highlight', false).classed('dimmed', false);
-      node.classed('dimmed', false);
+  function highlightSelected() {
+    if (!selectedId) {
+      world.querySelectorAll('.file.dimmed').forEach(e => e.classList.remove('dimmed'));
+      world.querySelectorAll('.group.dimmed').forEach(e => e.classList.remove('dimmed'));
       return;
     }
-    const connected = new Set([key]);
-    simLinks.forEach(l => {
-      const sKey = l.source.key || l.source, tKey = l.target.key || l.target;
-      if (sKey === key) connected.add(tKey);
-      if (tKey === key) connected.add(sKey);
+    const conn = new Set([selectedId]);
+    for (const id of (outMap.get(selectedId) || [])) conn.add(id);
+    for (const id of (inMap.get(selectedId) || [])) conn.add(id);
+    world.querySelectorAll('.file').forEach(el => {
+      el.classList.toggle('dimmed', !conn.has(el.dataset.id));
     });
-    link.classed('highlight', l => (l.source.key || l.source) === key || (l.target.key || l.target) === key)
-        .classed('dimmed', l => !((l.source.key || l.source) === key || (l.target.key || l.target) === key));
-    node.classed('dimmed', n => !connected.has(n.key));
-  }
-
-  // ---- legend (reflects only currently-visible groups) ----
-  const legend = document.getElementById('legend');
-  function updateLegend() {
-    const visibleDirs = Array.from(new Set(simNodes.map(n => n.dir))).sort();
-    legend.innerHTML = '<h4>Directories</h4>' + visibleDirs.map(d =>
-      `<div class="item"><span class="swatch" style="background:${groupColor(d)}"></span>${escapeHtml(d === '' ? '(root)' : d)}</div>`
-    ).join('');
-  }
-
-  // ---- expand all / collapse all ----
-  document.getElementById('collapse-all').addEventListener('click', () => {
-    expandedDirs = new Set(['']);
-    rebuildGraph(false);
-  });
-  document.getElementById('expand-all').addEventListener('click', () => {
-    if (data.nodes.length > EXPAND_ALL_WARN_THRESHOLD) {
-      const ok = window.confirm('This project has ' + data.nodes.length + ' files — expanding everything may be slow. Continue?');
-      if (!ok) return;
-    }
-    expandedDirs = new Set(dirTree.keys());
-    rebuildGraph(false);
-  });
-
-  // ---- search/filter (matches across the whole project, not just what's
-  // currently visible, so folders containing a match are never dimmed out
-  // and Enter can reveal+jump to a hidden file) ----
-  const searchEl = document.getElementById('search');
-  const searchCountEl = document.getElementById('search-count');
-  let searchTimer = null;
-
-  function computeMatches(q) {
-    const out = new Set();
-    if (!q) return out;
-    for (const n of data.nodes) {
-      if (n.name.toLowerCase().includes(q) || n.dir.toLowerCase().includes(q)) out.add(n.id);
-    }
-    return out;
-  }
-
-  function entityMatches(d, matchIds) {
-    if (!matchIds.size) return false;
-    if (d.type === 'file') return matchIds.has(d.id);
-    const prefix = d.id === '' ? '' : d.id + '/';
-    for (const fid of matchIds) {
-      const f = nodesById.get(fid);
-      if (f.dir === d.id || (prefix && f.dir.startsWith(prefix))) return true;
-    }
-    return false;
-  }
-
-  function applySearch() {
-    const q = searchEl.value.trim().toLowerCase();
-    const matchIds = computeMatches(q);
-    if (!q) {
-      node.classed('dimmed', false);
-      link.classed('dimmed', false).classed('highlight', false);
-      searchCountEl.textContent = '';
-      return;
-    }
-    node.classed('dimmed', d => !entityMatches(d, matchIds));
-    link.classed('dimmed', l => {
-      const s = simNodesByKey.get(l.source.key || l.source);
-      const t = simNodesByKey.get(l.target.key || l.target);
-      return !(s && entityMatches(s, matchIds)) && !(t && entityMatches(t, matchIds));
+    world.querySelectorAll('.group').forEach(el => {
+      const dp = el.dataset.dir;
+      let hit = false;
+      for (const fid of conn) {
+        const f = byId.get(fid);
+        if (f && (f.dir === dp || (dp && f.dir.startsWith(dp + '/')))) { hit = true; break; }
+      }
+      el.classList.toggle('dimmed', !hit);
     });
-    searchCountEl.textContent = matchIds.size
-      ? matchIds.size + (matchIds.size === 1 ? ' match' : ' matches') + ' — Enter to jump'
-      : 'no matches';
   }
 
-  searchEl.addEventListener('input', () => {
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(applySearch, 120);
-  });
-  searchEl.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Enter') {
-      const q = searchEl.value.trim().toLowerCase();
-      const matchIds = computeMatches(q);
-      if (matchIds.size) revealAndSelect(matchIds.values().next().value);
-    }
-  });
-
-  // ---- keyboard shortcuts ----
-  document.addEventListener('keydown', (ev) => {
-    if (ev.key === '/' && document.activeElement !== searchEl) {
-      ev.preventDefault();
-      searchEl.focus();
-    } else if (ev.key === 'Escape') {
-      closePanel();
-    }
-  });
-
-  // ---- resize ----
-  window.addEventListener('resize', () => {
-    width = wrap.clientWidth; height = wrap.clientHeight;
-    simulation.force('center', d3.forceCenter(width / 2, height / 2));
-    simulation.alpha(0.3).restart();
-  });
-
-  function formatBytes(n) {
-    if (n < 1024) return n + ' B';
-    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
-    return (n / 1024 / 1024).toFixed(1) + ' MB';
-  }
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  }
-  function escapeAttr(s) { return escapeHtml(s); }
-
-  rebuildGraph(true);
+  render();
 }
 </script>
 </body>

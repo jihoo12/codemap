@@ -1,21 +1,21 @@
 # Codemap
 
 A zero-dependency Node.js CLI that scans a project directory and generates
-a single interactive HTML file visualizing it as a diagram:
+a single interactive HTML file visualizing it as a box-in-box diagram:
 
-- **Subdirectories are groups** — drawn as translucent colored "blobs" that
-  cluster their files together, labeled with the directory path.
-- **Files are nodes** — colored by file type, sized roughly by content length.
-- **Arrows show references** — if one file's content mentions another file's
-  name (e.g. an `import`, `require`, `#include`, a link, a config path, etc.),
-  an arrow is drawn from the mentioning file to the mentioned file.
-- **Click a node** to open a side panel with that file's full content, plus
-  lists of what it references and what references it.
+- **Subdirectories are group boxes** — drawn as translucent colored
+  rectangles with a header bar showing the directory name and file count.
+- **Files are small boxes inside their parent group** — colored by file
+  type, arranged in a grid with consistent spacing.
+- **References are tracked in a side panel** — when you click a file,
+  you see what it references and what references it (no arrows on the
+  graph, to keep the layout clean).
+- **Click a file box** to open a side panel with that file's full content,
+  plus lists of outgoing and incoming references.
 - Respects your project's `.gitignore` (plus always skips `.git` and
   `node_modules`).
 - Everything is embedded in **one self-contained HTML file** — no server,
-  no build step. Just open it in a browser (it loads D3.js from a CDN for
-  the graph rendering, so you'll need internet access when you *view* it).
+  no build step, no CDN, no internet required. Just open it in a browser.
 
 ## Usage
 
@@ -44,12 +44,18 @@ Then open the generated HTML file in any browser.
 
 ## Controls in the diagram
 
-- **Drag** a node to reposition it (the layout re-settles around it).
-- **Scroll / pinch** to zoom, **drag background** to pan.
-- The view **auto-fits to the whole diagram** once the layout settles; use **"Fit view"** any time to re-center and re-fit (handy after you've zoomed/panned around, or dragged nodes far off-screen).
-- **Click a node** to see its content, outgoing references, and incoming references.
-- **Click a reference** in the side panel to jump straight to that file's node.
-- **Type in the filter box** to dim everything except matching files.
+- **Drag** the background to pan around the diagram.
+- **Scroll / pinch** to zoom in and out.
+- The view **auto-fits** to show all content when first opened or after
+  expanding/collapsing a group.
+- **Click a group header** to expand or collapse it (groups with many
+  files start collapsed).
+- **Click a file box** to see its content, outgoing references, and
+  incoming references in the side panel.
+- **Click a reference** in the side panel to jump straight to that file.
+- **Type in the filter box** (or press `/`) to dim everything except
+  matching files. Press **Enter** to jump to the first match.
+- Press **Escape** to close the side panel.
 
 ## How reference detection works
 
@@ -60,13 +66,14 @@ word. This naturally picks up most `import`/`require`/`include`/`from`
 statements, relative path references, config file mentions, links between
 docs, etc. It can occasionally produce a false positive (e.g. a common word
 that happens to match another file's name) or miss references that use
-unusual syntax — treat the arrows as a helpful map, not ground truth.
+unusual syntax — treat the references as a helpful map, not ground truth.
 
 ## Files
 
 - `codemap.js` — the CLI: directory walk, `.gitignore` parsing, binary
   detection, reference detection, and HTML generation.
-- `template.html` — the HTML/CSS/D3 template the data gets embedded into.
+- `template.html` — the HTML/CSS/JS template the data gets embedded into.
+  Pure client-side rendering with no external dependencies.
 
 Both files need to stay in the same folder (the script reads
 `template.html` next to itself).
