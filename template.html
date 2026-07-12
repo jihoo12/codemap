@@ -53,6 +53,8 @@
     font-size: 12px; cursor: pointer;
   }
   header button:hover { border-color: var(--accent); color: var(--accent); }
+  #search-wrap { display: flex; align-items: center; gap: 8px; }
+  #search-count { font-size: 11px; color: var(--text-dim); white-space: nowrap; min-width: 0; }
 
   #main { flex: 1; position: relative; overflow: hidden; }
   #canvas-wrap { position: absolute; inset: 0; }
@@ -96,6 +98,11 @@
   }
   .node.dimmed { opacity: 0.15; }
   .node.selected circle { stroke: var(--accent-2); stroke-width: 3px; }
+  .node.dir-node circle { cursor: pointer; }
+  circle.dir-circle { stroke-dasharray: 3,2; }
+  .dir-plus { font-size: 13px; fill: var(--text); pointer-events: none; font-weight: 700; }
+  .group-label.collapsible { cursor: pointer; }
+  .group-label.collapsible:hover { fill: var(--accent); }
 
   #panel {
     position: absolute; top: 0; right: 0; bottom: 0;
@@ -204,7 +211,12 @@
     <h1 id="proj-title">Codemap</h1>
     <span class="sub" id="proj-sub"></span>
     <div class="spacer"></div>
-    <input type="text" id="search" placeholder="Filter files..." />
+    <div id="search-wrap">
+      <input type="text" id="search" placeholder="Filter files... ( / )" />
+      <span id="search-count"></span>
+    </div>
+    <button id="expand-all">Expand all</button>
+    <button id="collapse-all">Collapse all</button>
     <button id="reset-zoom">Fit view</button>
   </header>
   <div id="main">
@@ -231,6 +243,13 @@
 <script>
 const DATA = /*__CODEMAP_DATA__*/;
 
+// Projects larger than this many files start fully collapsed to top-level
+// folders; smaller projects render flat (every file visible), matching the
+// previous behavior exactly.
+const AUTO_COLLAPSE_THRESHOLD = 150;
+// Confirm before expanding everything on projects bigger than this.
+const EXPAND_ALL_WARN_THRESHOLD = 600;
+
 document.getElementById('proj-title').textContent = DATA.projectName || 'Codemap';
 document.getElementById('proj-sub').textContent =
   DATA.nodes.length + ' files · ' + DATA.dirs.length + ' directories · ' + DATA.edges.length + ' references';
@@ -244,33 +263,179 @@ if (!DATA.nodes.length) {
 function runCodemap(data) {
   const nodesById = new Map(data.nodes.map(n => [n.id, n]));
 
-  // ---- color per top-level directory (or per extension if flat) ----
-  const dirColorScale = d3.scaleOrdinal(d3.schemeTableau10.concat(d3.schemeSet3));
-  function topGroup(dirPath) {
-    if (!dirPath) return '(root)';
-    return dirPath.split('/')[0];
+  // ---- directory tree (for progressive disclosure) ----
+  const dirTree = buildTree(data);
+  const dirStats = computeDirStats(dirTree, nodesById);
+
+  function buildTree(data) {
+    const dirs = new Map();
+    dirs.set('', { id: '', name: '(root)', parent: null, childDirs: [], files: [] });
+    function ensureDir(p) {
+      if (dirs.has(p)) return dirs.get(p);
+      const idx = p.lastIndexOf('/');
+      const parentPath = idx === -1 ? '' : p.slice(0, idx);
+      const name = idx === -1 ? p : p.slice(idx + 1);
+      const parent = ensureDir(parentPath);
+      const node = { id: p, name, parent: parentPath, childDirs: [], files: [] };
+      dirs.set(p, node);
+      parent.childDirs.push(p);
+      return node;
+    }
+    for (const d of data.dirs) { if (d !== '') ensureDir(d); }
+    for (const n of data.nodes) {
+      const dnode = ensureDir(n.dir);
+      dnode.files.push(n.id);
+    }
+    return dirs;
   }
-  const groupNames = Array.from(new Set(data.nodes.map(n => n.dir === '' ? '(root)' : n.dir)));
-  // Use full directory (not just top-level) as the "group" per the spec: subdirectory = group
-  const allDirs = data.dirs.length ? data.dirs.map(d => d === '' ? '(root)' : d) : ['(root)'];
-  const groupColor = d3.scaleOrdinal().domain(allDirs).range(d3.schemeTableau10.concat(d3.schemeSet3).concat(d3.schemePastel1));
 
-  const simNodes = data.nodes.map(n => ({
-    id: n.id, name: n.name, dir: n.dir === '' ? '(root)' : n.dir,
-    ext: n.ext, size: n.size, binary: n.binary, truncated: n.truncated,
-    content: n.content, x: Math.random()*800, y: Math.random()*600,
-  }));
+  function computeDirStats(dirs, nodesById) {
+    const stats = new Map();
+    function compute(path) {
+      if (stats.has(path)) return stats.get(path);
+      const dnode = dirs.get(path);
+      let fileCount = dnode.files.length;
+      let totalSize = 0;
+      for (const fid of dnode.files) {
+        const f = nodesById.get(fid);
+        totalSize += (f && f.size) || 0;
+      }
+      for (const cp of dnode.childDirs) {
+        const s = compute(cp);
+        fileCount += s.fileCount;
+        totalSize += s.totalSize;
+      }
+      const s = { fileCount, totalSize };
+      stats.set(path, s);
+      return s;
+    }
+    for (const path of dirs.keys()) compute(path);
+    return stats;
+  }
 
-  const simLinks = data.edges
-    .filter(e => nodesById.has(e.from) && nodesById.has(e.to))
-    .map(e => ({ source: e.from, target: e.to, via: e.via }));
+  // Which directories currently show their contents (vs. being collapsed
+  // into a single folder supernode). Root is always "expanded" implicitly.
+  let expandedDirs = data.nodes.length <= AUTO_COLLAPSE_THRESHOLD
+    ? new Set(dirTree.keys())
+    : new Set(['']);
 
-  // outgoing/incoming ref lookup for the side panel
+  const startedCollapsed = data.nodes.length > AUTO_COLLAPSE_THRESHOLD;
+  if (startedCollapsed) {
+    document.getElementById('proj-sub').textContent += ' · large project — click a folder to expand it';
+  }
+
+  // Walks the tree, emitting one entry per *visible* thing: either a
+  // collapsed directory (if it isn't expanded) or, for expanded
+  // directories, their direct files plus their child directories
+  // (recursing further only into ones that are themselves expanded).
+  function collectVisible(path, out) {
+    const dnode = dirTree.get(path);
+    for (const childPath of dnode.childDirs) {
+      if (expandedDirs.has(childPath)) {
+        collectVisible(childPath, out);
+      } else {
+        out.push({ type: 'dir', id: childPath });
+      }
+    }
+    for (const fileId of dnode.files) {
+      out.push({ type: 'file', id: fileId });
+    }
+  }
+
+  // Given a file id, finds the entity currently representing it on screen:
+  // itself, if every ancestor directory down to its own is expanded, or
+  // else the topmost collapsed ancestor directory.
+  function visibleEntityForFile(fileId) {
+    const f = nodesById.get(fileId);
+    const parts = f.dir === '' ? [] : f.dir.split('/');
+    let path = '';
+    for (const part of parts) {
+      path = path === '' ? part : path + '/' + part;
+      if (!expandedDirs.has(path)) return { type: 'dir', id: path };
+    }
+    return { type: 'file', id: fileId };
+  }
+
+  function computeVisibleGraph() {
+    const rawEntities = [];
+    collectVisible('', rawEntities);
+
+    const entities = rawEntities.map(e => {
+      const key = e.type + ':' + e.id;
+      if (e.type === 'file') {
+        const f = nodesById.get(e.id);
+        return {
+          key, type: 'file', id: e.id, name: f.name, dir: f.dir, ext: f.ext,
+          size: f.size, binary: f.binary, truncated: f.truncated, content: f.content,
+        };
+      }
+      const dnode = dirTree.get(e.id);
+      const stats = dirStats.get(e.id);
+      return {
+        key, type: 'dir', id: e.id, name: dnode.name, dir: dnode.parent,
+        fileCount: stats.fileCount, size: stats.totalSize,
+      };
+    });
+
+    const edgeMap = new Map();
+    for (const e of data.edges) {
+      if (!nodesById.has(e.from) || !nodesById.has(e.to)) continue;
+      const src = visibleEntityForFile(e.from);
+      const tgt = visibleEntityForFile(e.to);
+      const srcKey = src.type + ':' + src.id;
+      const tgtKey = tgt.type + ':' + tgt.id;
+      if (srcKey === tgtKey) continue; // internal to a collapsed folder
+      const ekey = srcKey + '=>' + tgtKey;
+      if (!edgeMap.has(ekey)) edgeMap.set(ekey, { source: srcKey, target: tgtKey, count: 0 });
+      edgeMap.get(ekey).count++;
+    }
+
+    return { entities, edges: Array.from(edgeMap.values()) };
+  }
+
+  function toggleExpand(path, expand) {
+    if (expand) {
+      expandedDirs.add(path);
+    } else if (path !== '') {
+      const prefix = path + '/';
+      for (const p of Array.from(expandedDirs)) {
+        if (p === path || p.startsWith(prefix)) expandedDirs.delete(p);
+      }
+    }
+    rebuildGraph(false);
+  }
+
+  // outgoing/incoming refs are computed once from the *full* dataset so the
+  // side panel always shows true file-level references, regardless of
+  // what's currently collapsed on screen.
   const outgoing = new Map(), incoming = new Map();
-  for (const n of simNodes) { outgoing.set(n.id, []); incoming.set(n.id, []); }
-  for (const e of simLinks) {
-    outgoing.get(e.source).push(e.target);
-    incoming.get(e.target).push(e.source);
+  for (const n of data.nodes) { outgoing.set(n.id, []); incoming.set(n.id, []); }
+  for (const e of data.edges) {
+    if (!outgoing.has(e.from) || !incoming.has(e.to)) continue;
+    outgoing.get(e.from).push(e.to);
+    incoming.get(e.to).push(e.from);
+  }
+
+  // ---- color scales ----
+  const groupColor = d3.scaleOrdinal()
+    .domain(data.dirs.length ? data.dirs : [''])
+    .range(d3.schemeTableau10.concat(d3.schemeSet3).concat(d3.schemePastel1));
+
+  function extColor(ext) {
+    const palette = {
+      '.js': '#f1e05a', '.jsx': '#f1e05a', '.ts': '#3178c6', '.tsx': '#3178c6',
+      '.py': '#3572A5', '.json': '#8bc34a', '.md': '#b0b0b0', '.html': '#e34c26',
+      '.css': '#563d7c', '.scss': '#c6538c', '.java': '#b07219', '.go': '#00ADD8',
+      '.rb': '#701516', '.php': '#4F5D95', '.c': '#555555', '.cpp': '#f34b7d',
+      '.rs': '#dea584', '.yml': '#cb171e', '.yaml': '#cb171e', '.sh': '#89e051',
+    };
+    return palette[ext] || '#8b93a3';
+  }
+
+  function nodeRadius(d) {
+    if (d.type === 'dir') return 10 + Math.min(22, Math.sqrt(d.fileCount) * 3);
+    const len = d.binary ? 0 : (d.content ? d.content.length : 0);
+    return 6 + Math.min(10, Math.sqrt(len) / 12);
   }
 
   const svg = d3.select('#graph');
@@ -299,12 +464,16 @@ function runCodemap(data) {
   });
   svg.call(zoom);
 
+  let simNodes = [];
+  let simNodesByKey = new Map();
+  let simLinks = [];
+
   let hasAutoFit = false;
   function fitToContent(duration) {
     if (!simNodes.length) return;
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
     for (const n of simNodes) {
-      const r = nodeRadius(n) + HULL_PADDING + 20; // room for hull padding + label
+      const r = nodeRadius(n) + HULL_PADDING + 20;
       if (n.x - r < x0) x0 = n.x - r;
       if (n.x + r > x1) x1 = n.x + r;
       if (n.y - r < y0) y0 = n.y - r;
@@ -318,28 +487,12 @@ function runCodemap(data) {
     if (duration) svg.transition().duration(duration).call(zoom.transform, t);
     else svg.call(zoom.transform, t);
   }
-
   document.getElementById('reset-zoom').addEventListener('click', () => fitToContent(400));
 
-  // size nodes by rough content length (loc proxy), clamped
-  function nodeRadius(n) {
-    const len = n.binary ? 0 : (n.content ? n.content.length : 0);
-    return 6 + Math.min(10, Math.sqrt(len) / 12);
-  }
+  const HULL_PADDING = 20;
 
-  function extColor(ext) {
-    const palette = {
-      '.js': '#f1e05a', '.jsx': '#f1e05a', '.ts': '#3178c6', '.tsx': '#3178c6',
-      '.py': '#3572A5', '.json': '#8bc34a', '.md': '#b0b0b0', '.html': '#e34c26',
-      '.css': '#563d7c', '.scss': '#c6538c', '.java': '#b07219', '.go': '#00ADD8',
-      '.rb': '#701516', '.php': '#4F5D95', '.c': '#555555', '.cpp': '#f34b7d',
-      '.rs': '#dea584', '.yml': '#cb171e', '.yaml': '#cb171e', '.sh': '#89e051',
-    };
-    return palette[ext] || '#8b93a3';
-  }
-
-  const simulation = d3.forceSimulation(simNodes)
-    .force('link', d3.forceLink(simLinks).id(d => d.id).distance(70).strength(0.15))
+  const simulation = d3.forceSimulation([])
+    .force('link', d3.forceLink([]).id(d => d.key).distance(70).strength(0.15))
     .force('charge', d3.forceManyBody().strength(-70))
     .force('collide', d3.forceCollide().radius(d => nodeRadius(d) + 6))
     .force('center', d3.forceCenter(width / 2, height / 2))
@@ -347,13 +500,9 @@ function runCodemap(data) {
     .on('tick', ticked)
     .on('end', () => { if (!hasAutoFit) { hasAutoFit = true; fitToContent(500); } });
 
-  // custom force: pull nodes toward the centroid of their own directory group
-  const HULL_PADDING = 20; // must match the padding used in drawHulls()
-
   function clusterForce() {
     let nodes;
     function force(alpha) {
-      // group nodes by directory and find each group's centroid
       const groups = new Map();
       for (const n of nodes) {
         if (!groups.has(n.dir)) groups.set(n.dir, { x: 0, y: 0, count: 0, members: [] });
@@ -362,7 +511,6 @@ function runCodemap(data) {
       }
       for (const g of groups.values()) { g.x /= g.count; g.y /= g.count; }
 
-      // pull each node toward its own group's centroid
       const k = alpha * 0.4;
       for (const n of nodes) {
         const g = groups.get(n.dir);
@@ -370,7 +518,6 @@ function runCodemap(data) {
         n.vy += (g.y - n.y) * k;
       }
 
-      // find each group's rough "radius" so we know how much space its hull needs
       for (const g of groups.values()) {
         let maxD = 0;
         for (const n of g.members) {
@@ -381,14 +528,13 @@ function runCodemap(data) {
         g.radius = maxD + HULL_PADDING;
       }
 
-      // push whole groups apart from each other when their hulls would overlap
       const groupList = Array.from(groups.values());
       for (let i = 0; i < groupList.length; i++) {
         for (let j = i + 1; j < groupList.length; j++) {
           const gA = groupList[i], gB = groupList[j];
           const dx = gB.x - gA.x, dy = gB.y - gA.y;
           const dist = Math.sqrt(dx * dx + dy * dy) || 0.001;
-          const minDist = gA.radius + gB.radius + 12; // extra gap between hulls
+          const minDist = gA.radius + gB.radius + 12;
           if (dist < minDist) {
             const push = ((minDist - dist) / dist) * alpha * 0.9;
             const ox = dx * push, oy = dy * push;
@@ -402,41 +548,99 @@ function runCodemap(data) {
     return force;
   }
 
-  const link = linkLayer.selectAll('path.link')
-    .data(simLinks)
-    .join('path')
-    .attr('class', 'link')
-    .attr('marker-end', 'url(#arrow)');
+  let node = nodeLayer.selectAll('g.node');
+  let link = linkLayer.selectAll('path.link');
 
-  const node = nodeLayer.selectAll('g.node')
-    .data(simNodes)
-    .join('g')
-    .attr('class', 'node')
-    .call(d3.drag()
-      .on('start', (ev, d) => { if (!ev.active) simulation.alphaTarget(0.2).restart(); d.fx = d.x; d.fy = d.y; })
-      .on('drag', (ev, d) => { d.fx = ev.x; d.fy = ev.y; })
-      .on('end', (ev, d) => { if (!ev.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }));
+  function rebuildGraph(initial) {
+    const { entities, edges } = computeVisibleGraph();
+    const prevByKey = simNodesByKey;
 
-  node.append('circle')
-    .attr('r', d => nodeRadius(d))
-    .attr('fill', d => extColor(d.ext))
-    .attr('stroke', d => d3.color(groupColor(d.dir)));
+    simNodes = entities.map(e => {
+      const prev = prevByKey.get(e.key);
+      if (prev) return Object.assign(prev, e);
+      // Seed brand-new nodes near the middle so they drift into place
+      // instead of starting from a random spot across the whole canvas.
+      return Object.assign({
+        x: width / 2 + (Math.random() - 0.5) * 120,
+        y: height / 2 + (Math.random() - 0.5) * 120,
+      }, e);
+    });
+    simNodesByKey = new Map(simNodes.map(n => [n.key, n]));
 
-  node.append('text')
-    .attr('dy', d => nodeRadius(d) + 11)
-    .attr('text-anchor', 'middle')
-    .text(d => d.name.length > 18 ? d.name.slice(0, 16) + '…' : d.name);
+    simLinks = edges
+      .filter(e => simNodesByKey.has(e.source) && simNodesByKey.has(e.target))
+      .map(e => ({ source: e.source, target: e.target, count: e.count }));
 
-  node.append('title').text(d => d.dir + '/' + d.name);
+    simulation.nodes(simNodes);
+    simulation.force('link', d3.forceLink(simLinks).id(d => d.key).distance(70).strength(0.15));
+    simulation.force('collide', d3.forceCollide().radius(d => nodeRadius(d) + 6));
 
-  node.on('click', (ev, d) => { ev.stopPropagation(); selectNode(d); });
+    updateSelections();
+    updateLegend();
+    if (document.getElementById('search').value.trim()) applySearch();
 
-  svg.on('click', () => closePanel());
+    simulation.alpha(initial ? 1 : 0.6).restart();
+  }
+
+  function updateSelections() {
+    link = linkLayer.selectAll('path.link')
+      .data(simLinks, d => d.source + '=>' + d.target)
+      .join('path')
+      .attr('class', 'link')
+      .attr('marker-end', 'url(#arrow)');
+
+    const nodeSel = nodeLayer.selectAll('g.node')
+      .data(simNodes, d => d.key);
+
+    nodeSel.exit().remove();
+
+    const nodeEnter = nodeSel.enter().append('g')
+      .call(d3.drag()
+        .on('start', (ev, d) => { if (!ev.active) simulation.alphaTarget(0.2).restart(); d.fx = d.x; d.fy = d.y; })
+        .on('drag', (ev, d) => { d.fx = ev.x; d.fy = ev.y; })
+        .on('end', (ev, d) => { if (!ev.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }))
+      .on('click', (ev, d) => {
+        ev.stopPropagation();
+        if (d.type === 'dir') toggleExpand(d.id, true);
+        else selectNode(d);
+      });
+
+    nodeEnter.append('circle');
+    nodeEnter.append('text').attr('class', 'file-label');
+    nodeEnter.append('title');
+
+    node = nodeEnter.merge(nodeSel);
+    node.attr('class', d => 'node' + (d.type === 'dir' ? ' dir-node' : ''));
+
+    node.select('circle')
+      .attr('r', d => nodeRadius(d))
+      .attr('class', d => d.type === 'dir' ? 'dir-circle' : null)
+      .attr('fill', d => d.type === 'dir' ? groupColor(d.id) : extColor(d.ext))
+      .attr('stroke', d => d.type === 'dir' ? d3.color(groupColor(d.id)).darker(0.8) : d3.color(groupColor(d.dir)));
+
+    node.select('text.file-label')
+      .attr('dy', d => nodeRadius(d) + 11)
+      .attr('text-anchor', 'middle')
+      .text(d => d.type === 'dir'
+        ? (d.name.length > 16 ? d.name.slice(0, 14) + '…' : d.name) + '/ (' + d.fileCount + ')'
+        : (d.name.length > 18 ? d.name.slice(0, 16) + '…' : d.name));
+
+    node.select('title')
+      .text(d => d.type === 'dir'
+        ? d.id + '/  —  ' + d.fileCount + ' file(s), ' + formatBytes(d.size) + ' — click to expand'
+        : d.dir + '/' + d.name);
+
+    // re-apply current selection/highlight state to the fresh join
+    node.classed('selected', d => d.type === 'file' && d.id === selectedId);
+    highlightLinks(selectedId);
+
+    svg.on('click', () => closePanel());
+  }
 
   function ticked() {
     link.attr('d', d => {
       const dx = d.target.x - d.source.x, dy = d.target.y - d.source.y;
-      const dr = Math.sqrt(dx*dx + dy*dy) * 1.6; // gentle curve
+      const dr = Math.sqrt(dx * dx + dy * dy) * 1.6;
       return `M${d.source.x},${d.source.y}A${dr},${dr} 0 0,1 ${d.target.x},${d.target.y}`;
     });
     node.attr('transform', d => `translate(${d.x},${d.y})`);
@@ -453,11 +657,10 @@ function runCodemap(data) {
     for (const [dir, pts] of byDir) {
       let hull;
       if (pts.length < 3) {
-        // pad with jittered points so hull() has enough to work with
         const [x, y] = pts[0];
         hull = pts.length === 2
           ? [pts[0], pts[1], [x + 20, y + 20]]
-          : [[x-20,y-20],[x+20,y-20],[x,y+20]];
+          : [[x - 20, y - 20], [x + 20, y - 20], [x, y + 20]];
       } else {
         hull = d3.polygonHull(pts);
       }
@@ -465,8 +668,8 @@ function runCodemap(data) {
       const centroid = d3.polygonCentroid(hull);
       const padded = hull.map(p => {
         const dx = p[0] - centroid[0], dy = p[1] - centroid[1];
-        const len = Math.sqrt(dx*dx + dy*dy) || 1;
-        return [p[0] + (dx/len) * HULL_PADDING, p[1] + (dy/len) * HULL_PADDING];
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+        return [p[0] + (dx / len) * HULL_PADDING, p[1] + (dy / len) * HULL_PADDING];
       });
       hullData.push({ dir, path: 'M' + padded.map(p => p.join(',')).join('L') + 'Z', top: d3.min(padded, p => p[1]), cx: centroid[0] });
     }
@@ -480,11 +683,16 @@ function runCodemap(data) {
 
     const labelSel = hullLayer.selectAll('text.group-label').data(hullData, d => d.dir);
     labelSel.join('text')
-      .attr('class', 'group-label')
+      .attr('class', d => 'group-label' + (d.dir === '' ? '' : ' collapsible'))
       .attr('x', d => d.cx)
       .attr('y', d => d.top - 8)
       .attr('text-anchor', 'middle')
-      .text(d => d.dir);
+      .text(d => (d.dir === '' ? '(root)' : d.dir) + (d.dir === '' ? '' : '  [–]'))
+      .on('click', (ev, d) => {
+        if (d.dir === '') return;
+        ev.stopPropagation();
+        toggleExpand(d.dir, false);
+      });
   }
 
   // ---- side panel ----
@@ -493,11 +701,11 @@ function runCodemap(data) {
 
   function selectNode(d) {
     selectedId = d.id;
-    node.classed('selected', n => n.id === d.id);
-    highlightLinks(d.id);
+    node.classed('selected', n => n.type === 'file' && n.id === d.id);
+    highlightLinks(d.key);
 
     document.getElementById('p-fname').textContent = d.name;
-    document.getElementById('p-fdir').textContent = d.dir === '(root)' ? '/' : '/' + d.dir;
+    document.getElementById('p-fdir').textContent = d.dir === '' ? '/' : '/' + d.dir;
 
     const meta = document.getElementById('p-meta');
     meta.innerHTML = '';
@@ -508,7 +716,6 @@ function runCodemap(data) {
     const refsEl = document.getElementById('p-refs');
     const outs = outgoing.get(d.id) || [];
     const ins = incoming.get(d.id) || [];
-    // Long lists start collapsed; short (or empty) lists start open.
     const outOpen = outs.length > 0 && outs.length <= 8;
     const inOpen = ins.length > 0 && ins.length <= 8;
     let refsHtml = '<button class="expand-all" data-action="expand">Expand all</button>'
@@ -517,10 +724,7 @@ function runCodemap(data) {
     refsHtml += refSection('Referenced by', ins, '←', inOpen);
     refsEl.innerHTML = refsHtml;
     refsEl.querySelectorAll('.ref-item').forEach(el => {
-      el.addEventListener('click', () => {
-        const target = simNodes.find(n => n.id === el.dataset.id);
-        if (target) selectNode(target);
-      });
+      el.addEventListener('click', () => revealAndSelect(el.dataset.id));
     });
     refsEl.querySelectorAll('.expand-all').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -540,6 +744,23 @@ function runCodemap(data) {
     }
 
     panel.classList.add('open');
+  }
+
+  // Reveals a file that may currently be hidden inside a collapsed folder:
+  // expands every ancestor directory on its path, rebuilds the graph, then
+  // opens its panel. Used by reference links and search-jump.
+  function revealAndSelect(fileId) {
+    const f = nodesById.get(fileId);
+    if (!f) return;
+    const parts = f.dir === '' ? [] : f.dir.split('/');
+    let path = '';
+    for (const part of parts) {
+      path = path === '' ? part : path + '/' + part;
+      expandedDirs.add(path);
+    }
+    rebuildGraph(false);
+    const target = simNodesByKey.get('file:' + fileId);
+    if (target) selectNode(target);
   }
 
   function refSection(title, ids, arrow, openByDefault) {
@@ -567,35 +788,113 @@ function runCodemap(data) {
     highlightLinks(null);
   }
 
-  function highlightLinks(id) {
-    if (!id) {
+  function highlightLinks(key) {
+    if (!key) {
       link.classed('highlight', false).classed('dimmed', false);
       node.classed('dimmed', false);
       return;
     }
-    const connected = new Set([id]);
+    const connected = new Set([key]);
     simLinks.forEach(l => {
-      if (l.source.id === id) connected.add(l.target.id);
-      if (l.target.id === id) connected.add(l.source.id);
+      const sKey = l.source.key || l.source, tKey = l.target.key || l.target;
+      if (sKey === key) connected.add(tKey);
+      if (tKey === key) connected.add(sKey);
     });
-    link.classed('highlight', l => l.source.id === id || l.target.id === id)
-        .classed('dimmed', l => !(l.source.id === id || l.target.id === id));
-    node.classed('dimmed', n => !connected.has(n.id));
+    link.classed('highlight', l => (l.source.key || l.source) === key || (l.target.key || l.target) === key)
+        .classed('dimmed', l => !((l.source.key || l.source) === key || (l.target.key || l.target) === key));
+    node.classed('dimmed', n => !connected.has(n.key));
   }
 
-  // ---- legend ----
+  // ---- legend (reflects only currently-visible groups) ----
   const legend = document.getElementById('legend');
-  legend.innerHTML = '<h4>Directories</h4>' + allDirs.map(d =>
-    `<div class="item"><span class="swatch" style="background:${groupColor(d)}"></span>${escapeHtml(d)}</div>`
-  ).join('');
+  function updateLegend() {
+    const visibleDirs = Array.from(new Set(simNodes.map(n => n.dir))).sort();
+    legend.innerHTML = '<h4>Directories</h4>' + visibleDirs.map(d =>
+      `<div class="item"><span class="swatch" style="background:${groupColor(d)}"></span>${escapeHtml(d === '' ? '(root)' : d)}</div>`
+    ).join('');
+  }
 
-  // ---- search/filter ----
-  document.getElementById('search').addEventListener('input', (ev) => {
-    const q = ev.target.value.trim().toLowerCase();
-    if (!q) { node.classed('dimmed', false); link.classed('dimmed', false).classed('highlight', false); return; }
-    const matchIds = new Set(simNodes.filter(n => n.name.toLowerCase().includes(q) || n.dir.toLowerCase().includes(q)).map(n => n.id));
-    node.classed('dimmed', n => !matchIds.has(n.id));
-    link.classed('dimmed', l => !matchIds.has(l.source.id) && !matchIds.has(l.target.id));
+  // ---- expand all / collapse all ----
+  document.getElementById('collapse-all').addEventListener('click', () => {
+    expandedDirs = new Set(['']);
+    rebuildGraph(false);
+  });
+  document.getElementById('expand-all').addEventListener('click', () => {
+    if (data.nodes.length > EXPAND_ALL_WARN_THRESHOLD) {
+      const ok = window.confirm('This project has ' + data.nodes.length + ' files — expanding everything may be slow. Continue?');
+      if (!ok) return;
+    }
+    expandedDirs = new Set(dirTree.keys());
+    rebuildGraph(false);
+  });
+
+  // ---- search/filter (matches across the whole project, not just what's
+  // currently visible, so folders containing a match are never dimmed out
+  // and Enter can reveal+jump to a hidden file) ----
+  const searchEl = document.getElementById('search');
+  const searchCountEl = document.getElementById('search-count');
+  let searchTimer = null;
+
+  function computeMatches(q) {
+    const out = new Set();
+    if (!q) return out;
+    for (const n of data.nodes) {
+      if (n.name.toLowerCase().includes(q) || n.dir.toLowerCase().includes(q)) out.add(n.id);
+    }
+    return out;
+  }
+
+  function entityMatches(d, matchIds) {
+    if (!matchIds.size) return false;
+    if (d.type === 'file') return matchIds.has(d.id);
+    const prefix = d.id === '' ? '' : d.id + '/';
+    for (const fid of matchIds) {
+      const f = nodesById.get(fid);
+      if (f.dir === d.id || (prefix && f.dir.startsWith(prefix))) return true;
+    }
+    return false;
+  }
+
+  function applySearch() {
+    const q = searchEl.value.trim().toLowerCase();
+    const matchIds = computeMatches(q);
+    if (!q) {
+      node.classed('dimmed', false);
+      link.classed('dimmed', false).classed('highlight', false);
+      searchCountEl.textContent = '';
+      return;
+    }
+    node.classed('dimmed', d => !entityMatches(d, matchIds));
+    link.classed('dimmed', l => {
+      const s = simNodesByKey.get(l.source.key || l.source);
+      const t = simNodesByKey.get(l.target.key || l.target);
+      return !(s && entityMatches(s, matchIds)) && !(t && entityMatches(t, matchIds));
+    });
+    searchCountEl.textContent = matchIds.size
+      ? matchIds.size + (matchIds.size === 1 ? ' match' : ' matches') + ' — Enter to jump'
+      : 'no matches';
+  }
+
+  searchEl.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(applySearch, 120);
+  });
+  searchEl.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') {
+      const q = searchEl.value.trim().toLowerCase();
+      const matchIds = computeMatches(q);
+      if (matchIds.size) revealAndSelect(matchIds.values().next().value);
+    }
+  });
+
+  // ---- keyboard shortcuts ----
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === '/' && document.activeElement !== searchEl) {
+      ev.preventDefault();
+      searchEl.focus();
+    } else if (ev.key === 'Escape') {
+      closePanel();
+    }
   });
 
   // ---- resize ----
@@ -607,13 +906,15 @@ function runCodemap(data) {
 
   function formatBytes(n) {
     if (n < 1024) return n + ' B';
-    if (n < 1024*1024) return (n/1024).toFixed(1) + ' KB';
-    return (n/1024/1024).toFixed(1) + ' MB';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    return (n / 1024 / 1024).toFixed(1) + ' MB';
   }
   function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
   function escapeAttr(s) { return escapeHtml(s); }
+
+  rebuildGraph(true);
 }
 </script>
 </body>
