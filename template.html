@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Codemap</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #161a21;
+    --panel-2: #1d222b;
+    --border: #2a303c;
+    --text: #e6e9ef;
+    --text-dim: #8b93a3;
+    --accent: #5fb3ff;
+    --accent-2: #ffb454;
+    --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg); color: var(--text);
+    font-family: var(--sans);
+    overflow: hidden;
+  }
+  #app { display: flex; flex-direction: column; height: 100vh; }
+
+  header {
+    display: flex; align-items: center; gap: 16px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    flex-shrink: 0;
+    z-index: 5;
+  }
+  header h1 {
+    font-size: 15px; font-weight: 600; margin: 0;
+    letter-spacing: 0.2px;
+  }
+  header .sub { color: var(--text-dim); font-size: 12px; }
+  header .spacer { flex: 1; }
+  header input[type="text"] {
+    background: var(--panel-2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; padding: 6px 10px;
+    font-size: 13px; width: 220px; outline: none;
+  }
+  header input[type="text"]:focus { border-color: var(--accent); }
+  header button {
+    background: var(--panel-2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; padding: 6px 10px;
+    font-size: 12px; cursor: pointer;
+  }
+  header button:hover { border-color: var(--accent); color: var(--accent); }
+
+  #main { flex: 1; position: relative; overflow: hidden; }
+  #canvas-wrap { position: absolute; inset: 0; }
+  svg#graph { width: 100%; height: 100%; cursor: grab; }
+  svg#graph:active { cursor: grabbing; }
+
+  .group-hull {
+    fill-opacity: 0.10;
+    stroke-opacity: 0.55;
+    stroke-width: 1.5px;
+  }
+  .group-label {
+    font-size: 11px;
+    font-family: var(--mono);
+    fill: var(--text-dim);
+    pointer-events: none;
+    user-select: none;
+  }
+
+  .link {
+    stroke: #5fb3ff;
+    stroke-opacity: 0.35;
+    fill: none;
+  }
+  .link.highlight { stroke-opacity: 0.95; stroke-width: 2px; }
+  .link.dimmed { stroke-opacity: 0.06; }
+
+  .node circle {
+    stroke: rgba(0,0,0,0.4);
+    stroke-width: 1px;
+    cursor: pointer;
+  }
+  .node text {
+    font-size: 10px;
+    font-family: var(--mono);
+    fill: var(--text);
+    pointer-events: none;
+    paint-order: stroke;
+    stroke: var(--bg);
+    stroke-width: 3px;
+  }
+  .node.dimmed { opacity: 0.15; }
+  .node.selected circle { stroke: var(--accent-2); stroke-width: 3px; }
+
+  #panel {
+    position: absolute; top: 0; right: 0; bottom: 0;
+    width: 460px; max-width: 90vw;
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    transform: translateX(100%);
+    transition: transform 0.18s ease;
+    display: flex; flex-direction: column;
+    z-index: 10;
+  }
+  #panel.open { transform: translateX(0); }
+  #panel .panel-header {
+    padding: 12px 14px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: flex-start; gap: 10px;
+  }
+  #panel .panel-header .titles { flex: 1; min-width: 0; }
+  #panel .panel-header .fname {
+    font-family: var(--mono); font-size: 13px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #panel .panel-header .fdir {
+    font-size: 11px; color: var(--text-dim); margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #panel .close-btn {
+    background: none; border: none; color: var(--text-dim);
+    font-size: 18px; cursor: pointer; line-height: 1; padding: 4px;
+  }
+  #panel .close-btn:hover { color: var(--text); }
+  #panel .meta-row {
+    padding: 8px 14px; border-bottom: 1px solid var(--border);
+    font-size: 11px; color: var(--text-dim);
+    display: flex; gap: 14px; flex-wrap: wrap;
+  }
+  #panel .refs {
+    padding: 8px 14px; border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  #panel .refs h4 { margin: 0 0 6px; font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.4px; }
+  #panel .refs .ref-item {
+    display: block; color: var(--accent); text-decoration: none;
+    font-family: var(--mono); font-size: 12px; padding: 2px 0; cursor: pointer;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #panel .refs .ref-item:hover { text-decoration: underline; }
+  #panel .refs .none { color: var(--text-dim); font-style: italic; }
+  #panel .content-wrap { flex: 1; overflow: auto; padding: 0; }
+  #panel pre {
+    margin: 0; padding: 14px; font-family: var(--mono);
+    font-size: 12px; line-height: 1.55; white-space: pre-wrap;
+    word-break: break-word; color: #d3d8e0;
+  }
+  #panel .binary-note, #panel .empty-note {
+    padding: 20px 14px; color: var(--text-dim); font-size: 13px; font-style: italic;
+  }
+
+  #legend {
+    position: absolute; left: 14px; bottom: 14px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 12px; font-size: 11px;
+    max-height: 40vh; overflow: auto; max-width: 260px;
+    z-index: 4;
+  }
+  #legend h4 { margin: 0 0 6px; font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.4px; }
+  #legend .item { display: flex; align-items: center; gap: 6px; padding: 2px 0; color: var(--text-dim); }
+  #legend .swatch { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+
+  #empty-state {
+    position: absolute; inset: 0; display: flex; align-items: center;
+    justify-content: center; color: var(--text-dim); font-size: 14px;
+    text-align: center; padding: 40px;
+  }
+
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1 id="proj-title">Codemap</h1>
+    <span class="sub" id="proj-sub"></span>
+    <div class="spacer"></div>
+    <input type="text" id="search" placeholder="Filter files..." />
+    <button id="reset-zoom">Reset view</button>
+  </header>
+  <div id="main">
+    <div id="canvas-wrap">
+      <svg id="graph"></svg>
+    </div>
+    <div id="legend"></div>
+    <div id="panel">
+      <div class="panel-header">
+        <div class="titles">
+          <div class="fname" id="p-fname">—</div>
+          <div class="fdir" id="p-fdir">—</div>
+        </div>
+        <button class="close-btn" id="p-close">✕</button>
+      </div>
+      <div class="meta-row" id="p-meta"></div>
+      <div class="refs" id="p-refs"></div>
+      <div class="content-wrap" id="p-content"></div>
+    </div>
+    <div id="empty-state" style="display:none;">No files found (everything may be excluded by .gitignore).</div>
+  </div>
+</div>
+
+<script>
+const DATA = /*__CODEMAP_DATA__*/;
+
+document.getElementById('proj-title').textContent = DATA.projectName || 'Codemap';
+document.getElementById('proj-sub').textContent =
+  DATA.nodes.length + ' files · ' + DATA.dirs.length + ' directories · ' + DATA.edges.length + ' references';
+
+if (!DATA.nodes.length) {
+  document.getElementById('empty-state').style.display = 'flex';
+} else {
+  runCodemap(DATA);
+}
+
+function runCodemap(data) {
+  const nodesById = new Map(data.nodes.map(n => [n.id, n]));
+
+  // ---- color per top-level directory (or per extension if flat) ----
+  const dirColorScale = d3.scaleOrdinal(d3.schemeTableau10.concat(d3.schemeSet3));
+  function topGroup(dirPath) {
+    if (!dirPath) return '(root)';
+    return dirPath.split('/')[0];
+  }
+  const groupNames = Array.from(new Set(data.nodes.map(n => n.dir === '' ? '(root)' : n.dir)));
+  // Use full directory (not just top-level) as the "group" per the spec: subdirectory = group
+  const allDirs = data.dirs.length ? data.dirs.map(d => d === '' ? '(root)' : d) : ['(root)'];
+  const groupColor = d3.scaleOrdinal().domain(allDirs).range(d3.schemeTableau10.concat(d3.schemeSet3).concat(d3.schemePastel1));
+
+  const simNodes = data.nodes.map(n => ({
+    id: n.id, name: n.name, dir: n.dir === '' ? '(root)' : n.dir,
+    ext: n.ext, size: n.size, binary: n.binary, truncated: n.truncated,
+    content: n.content, x: Math.random()*800, y: Math.random()*600,
+  }));
+
+  const simLinks = data.edges
+    .filter(e => nodesById.has(e.from) && nodesById.has(e.to))
+    .map(e => ({ source: e.from, target: e.to, via: e.via }));
+
+  // outgoing/incoming ref lookup for the side panel
+  const outgoing = new Map(), incoming = new Map();
+  for (const n of simNodes) { outgoing.set(n.id, []); incoming.set(n.id, []); }
+  for (const e of simLinks) {
+    outgoing.get(e.source).push(e.target);
+    incoming.get(e.target).push(e.source);
+  }
+
+  const svg = d3.select('#graph');
+  const wrap = document.getElementById('canvas-wrap');
+  let width = wrap.clientWidth, height = wrap.clientHeight;
+
+  const zoomLayer = svg.append('g').attr('class', 'zoom-layer');
+  const hullLayer = zoomLayer.append('g').attr('class', 'hulls');
+  const linkLayer = zoomLayer.append('g').attr('class', 'links');
+  const nodeLayer = zoomLayer.append('g').attr('class', 'nodes-layer');
+
+  svg.append('defs').append('marker')
+    .attr('id', 'arrow')
+    .attr('viewBox', '0 -5 10 10')
+    .attr('refX', 18)
+    .attr('refY', 0)
+    .attr('markerWidth', 7)
+    .attr('markerHeight', 7)
+    .attr('orient', 'auto')
+    .append('path')
+    .attr('d', 'M0,-5L10,0L0,5')
+    .attr('fill', '#5fb3ff');
+
+  const zoom = d3.zoom().scaleExtent([0.15, 4]).on('zoom', (ev) => {
+    zoomLayer.attr('transform', ev.transform);
+  });
+  svg.call(zoom);
+
+  document.getElementById('reset-zoom').addEventListener('click', () => {
+    svg.transition().duration(400).call(zoom.transform, d3.zoomIdentity);
+  });
+
+  // size nodes by rough content length (loc proxy), clamped
+  function nodeRadius(n) {
+    const len = n.binary ? 0 : (n.content ? n.content.length : 0);
+    return 6 + Math.min(10, Math.sqrt(len) / 12);
+  }
+
+  function extColor(ext) {
+    const palette = {
+      '.js': '#f1e05a', '.jsx': '#f1e05a', '.ts': '#3178c6', '.tsx': '#3178c6',
+      '.py': '#3572A5', '.json': '#8bc34a', '.md': '#b0b0b0', '.html': '#e34c26',
+      '.css': '#563d7c', '.scss': '#c6538c', '.java': '#b07219', '.go': '#00ADD8',
+      '.rb': '#701516', '.php': '#4F5D95', '.c': '#555555', '.cpp': '#f34b7d',
+      '.rs': '#dea584', '.yml': '#cb171e', '.yaml': '#cb171e', '.sh': '#89e051',
+    };
+    return palette[ext] || '#8b93a3';
+  }
+
+  const simulation = d3.forceSimulation(simNodes)
+    .force('link', d3.forceLink(simLinks).id(d => d.id).distance(70).strength(0.15))
+    .force('charge', d3.forceManyBody().strength(-140))
+    .force('collide', d3.forceCollide().radius(d => nodeRadius(d) + 10))
+    .force('center', d3.forceCenter(width / 2, height / 2))
+    .force('cluster', clusterForce())
+    .on('tick', ticked);
+
+  // custom force: pull nodes toward the centroid of their own directory group
+  function clusterForce() {
+    let nodes;
+    function force(alpha) {
+      const centroids = new Map();
+      for (const n of nodes) {
+        if (!centroids.has(n.dir)) centroids.set(n.dir, { x: 0, y: 0, count: 0 });
+        const c = centroids.get(n.dir);
+        c.x += n.x; c.y += n.y; c.count++;
+      }
+      for (const c of centroids.values()) { c.x /= c.count; c.y /= c.count; }
+      const k = alpha * 0.25;
+      for (const n of nodes) {
+        const c = centroids.get(n.dir);
+        n.vx += (c.x - n.x) * k;
+        n.vy += (c.y - n.y) * k;
+      }
+    }
+    force.initialize = (ns) => { nodes = ns; };
+    return force;
+  }
+
+  const link = linkLayer.selectAll('path.link')
+    .data(simLinks)
+    .join('path')
+    .attr('class', 'link')
+    .attr('marker-end', 'url(#arrow)');
+
+  const node = nodeLayer.selectAll('g.node')
+    .data(simNodes)
+    .join('g')
+    .attr('class', 'node')
+    .call(d3.drag()
+      .on('start', (ev, d) => { if (!ev.active) simulation.alphaTarget(0.2).restart(); d.fx = d.x; d.fy = d.y; })
+      .on('drag', (ev, d) => { d.fx = ev.x; d.fy = ev.y; })
+      .on('end', (ev, d) => { if (!ev.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }));
+
+  node.append('circle')
+    .attr('r', d => nodeRadius(d))
+    .attr('fill', d => extColor(d.ext))
+    .attr('stroke', d => d3.color(groupColor(d.dir)));
+
+  node.append('text')
+    .attr('dy', d => nodeRadius(d) + 11)
+    .attr('text-anchor', 'middle')
+    .text(d => d.name.length > 18 ? d.name.slice(0, 16) + '…' : d.name);
+
+  node.append('title').text(d => d.dir + '/' + d.name);
+
+  node.on('click', (ev, d) => { ev.stopPropagation(); selectNode(d); });
+
+  svg.on('click', () => closePanel());
+
+  function ticked() {
+    link.attr('d', d => {
+      const dx = d.target.x - d.source.x, dy = d.target.y - d.source.y;
+      const dr = Math.sqrt(dx*dx + dy*dy) * 1.6; // gentle curve
+      return `M${d.source.x},${d.source.y}A${dr},${dr} 0 0,1 ${d.target.x},${d.target.y}`;
+    });
+    node.attr('transform', d => `translate(${d.x},${d.y})`);
+    drawHulls();
+  }
+
+  function drawHulls() {
+    const byDir = new Map();
+    for (const n of simNodes) {
+      if (!byDir.has(n.dir)) byDir.set(n.dir, []);
+      byDir.get(n.dir).push([n.x, n.y]);
+    }
+    const hullData = [];
+    for (const [dir, pts] of byDir) {
+      let hull;
+      if (pts.length < 3) {
+        // pad with jittered points so hull() has enough to work with
+        const [x, y] = pts[0];
+        hull = pts.length === 2
+          ? [pts[0], pts[1], [x + 20, y + 20]]
+          : [[x-20,y-20],[x+20,y-20],[x,y+20]];
+      } else {
+        hull = d3.polygonHull(pts);
+      }
+      if (!hull) continue;
+      const centroid = d3.polygonCentroid(hull);
+      const padded = hull.map(p => {
+        const dx = p[0] - centroid[0], dy = p[1] - centroid[1];
+        const len = Math.sqrt(dx*dx + dy*dy) || 1;
+        return [p[0] + (dx/len) * 26, p[1] + (dy/len) * 26];
+      });
+      hullData.push({ dir, path: 'M' + padded.map(p => p.join(',')).join('L') + 'Z', top: d3.min(padded, p => p[1]), cx: centroid[0] });
+    }
+
+    const hullSel = hullLayer.selectAll('path.group-hull').data(hullData, d => d.dir);
+    hullSel.join('path')
+      .attr('class', 'group-hull')
+      .attr('fill', d => groupColor(d.dir))
+      .attr('stroke', d => groupColor(d.dir))
+      .attr('d', d => d.path);
+
+    const labelSel = hullLayer.selectAll('text.group-label').data(hullData, d => d.dir);
+    labelSel.join('text')
+      .attr('class', 'group-label')
+      .attr('x', d => d.cx)
+      .attr('y', d => d.top - 8)
+      .attr('text-anchor', 'middle')
+      .text(d => d.dir);
+  }
+
+  // ---- side panel ----
+  const panel = document.getElementById('panel');
+  let selectedId = null;
+
+  function selectNode(d) {
+    selectedId = d.id;
+    node.classed('selected', n => n.id === d.id);
+    highlightLinks(d.id);
+
+    document.getElementById('p-fname').textContent = d.name;
+    document.getElementById('p-fdir').textContent = d.dir === '(root)' ? '/' : '/' + d.dir;
+
+    const meta = document.getElementById('p-meta');
+    meta.innerHTML = '';
+    addMeta(meta, 'size', formatBytes(d.size));
+    addMeta(meta, 'type', d.ext || '(no ext)');
+    if (d.truncated) addMeta(meta, 'note', 'content truncated for display');
+
+    const refsEl = document.getElementById('p-refs');
+    const outs = outgoing.get(d.id) || [];
+    const ins = incoming.get(d.id) || [];
+    let refsHtml = '<h4>References (' + outs.length + ')</h4>';
+    refsHtml += outs.length
+      ? outs.map(id => `<a class="ref-item" data-id="${escapeAttr(id)}">→ ${escapeHtml(id)}</a>`).join('')
+      : '<div class="none">none detected</div>';
+    refsHtml += '<h4 style="margin-top:10px;">Referenced by (' + ins.length + ')</h4>';
+    refsHtml += ins.length
+      ? ins.map(id => `<a class="ref-item" data-id="${escapeAttr(id)}">← ${escapeHtml(id)}</a>`).join('')
+      : '<div class="none">none detected</div>';
+    refsEl.innerHTML = refsHtml;
+    refsEl.querySelectorAll('.ref-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const target = simNodes.find(n => n.id === el.dataset.id);
+        if (target) selectNode(target);
+      });
+    });
+
+    const contentEl = document.getElementById('p-content');
+    if (d.binary) {
+      contentEl.innerHTML = '<div class="binary-note">Binary file — content preview not available.</div>';
+    } else if (!d.content) {
+      contentEl.innerHTML = '<div class="empty-note">(empty file)</div>';
+    } else {
+      contentEl.innerHTML = '<pre></pre>';
+      contentEl.querySelector('pre').textContent = d.content;
+    }
+
+    panel.classList.add('open');
+  }
+
+  function addMeta(container, label, value) {
+    const span = document.createElement('span');
+    span.innerHTML = '<strong style="color:var(--text)">' + escapeHtml(label) + ':</strong> ' + escapeHtml(String(value));
+    container.appendChild(span);
+  }
+
+  document.getElementById('p-close').addEventListener('click', closePanel);
+  function closePanel() {
+    selectedId = null;
+    panel.classList.remove('open');
+    node.classed('selected', false);
+    highlightLinks(null);
+  }
+
+  function highlightLinks(id) {
+    if (!id) {
+      link.classed('highlight', false).classed('dimmed', false);
+      node.classed('dimmed', false);
+      return;
+    }
+    const connected = new Set([id]);
+    simLinks.forEach(l => {
+      if (l.source.id === id) connected.add(l.target.id);
+      if (l.target.id === id) connected.add(l.source.id);
+    });
+    link.classed('highlight', l => l.source.id === id || l.target.id === id)
+        .classed('dimmed', l => !(l.source.id === id || l.target.id === id));
+    node.classed('dimmed', n => !connected.has(n.id));
+  }
+
+  // ---- legend ----
+  const legend = document.getElementById('legend');
+  legend.innerHTML = '<h4>Directories</h4>' + allDirs.map(d =>
+    `<div class="item"><span class="swatch" style="background:${groupColor(d)}"></span>${escapeHtml(d)}</div>`
+  ).join('');
+
+  // ---- search/filter ----
+  document.getElementById('search').addEventListener('input', (ev) => {
+    const q = ev.target.value.trim().toLowerCase();
+    if (!q) { node.classed('dimmed', false); link.classed('dimmed', false).classed('highlight', false); return; }
+    const matchIds = new Set(simNodes.filter(n => n.name.toLowerCase().includes(q) || n.dir.toLowerCase().includes(q)).map(n => n.id));
+    node.classed('dimmed', n => !matchIds.has(n.id));
+    link.classed('dimmed', l => !matchIds.has(l.source.id) && !matchIds.has(l.target.id));
+  });
+
+  // ---- resize ----
+  window.addEventListener('resize', () => {
+    width = wrap.clientWidth; height = wrap.clientHeight;
+    simulation.force('center', d3.forceCenter(width / 2, height / 2));
+    simulation.alpha(0.3).restart();
+  });
+
+  function formatBytes(n) {
+    if (n < 1024) return n + ' B';
+    if (n < 1024*1024) return (n/1024).toFixed(1) + ' KB';
+    return (n/1024/1024).toFixed(1) + ' MB';
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function escapeAttr(s) { return escapeHtml(s); }
+}
+</script>
+</body>
+</html>
