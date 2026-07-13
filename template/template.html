@@ -144,10 +144,19 @@
     width: var(--sidebar-w); flex-shrink: 0;
     background: var(--surface); border-right: 1px solid var(--border);
     display: flex; flex-direction: column; overflow: hidden;
-    transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-    z-index: 5;
+    z-index: 5; position: relative;
   }
   #sidebar.collapsed { width: 0; border-right: none; }
+  #sidebar.collapsed #sidebar-resize { display: none; }
+  #sidebar-resize {
+    position: absolute; top: 0; bottom: 0; right: 0;
+    width: 6px; cursor: col-resize; z-index: 20;
+    background: rgba(139,148,158,0.15);
+    border-left: 2px solid transparent;
+    transition: border-color 0.1s, background 0.1s;
+  }
+  #sidebar-resize:hover { border-left-color: var(--accent); background: rgba(88,166,255,0.08); }
+  #sidebar-resize.dragging { border-left-color: var(--accent); background: rgba(88,166,255,0.15); cursor: col-resize; }
   .sidebar-header {
     display: flex; align-items: center; justify-content: space-between;
     padding: 6px 10px; border-bottom: 1px solid var(--border);
@@ -300,6 +309,15 @@
     box-shadow: -8px 0 32px rgba(0,0,0,0.4);
   }
   #panel.open { transform: translateX(0); }
+  #panel-resize {
+    position: absolute; top: 0; bottom: 0; left: -3px;
+    width: 6px; cursor: col-resize; z-index: 30;
+    background: rgba(139,148,158,0.15);
+    border-right: 2px solid transparent;
+    transition: border-color 0.1s, background 0.1s;
+  }
+  #panel-resize:hover { border-right-color: var(--accent); background: rgba(88,166,255,0.08); }
+  #panel-resize.dragging { border-right-color: var(--accent); background: rgba(88,166,255,0.15); cursor: col-resize; }
 
   .panel-header {
     padding: 10px 12px; border-bottom: 1px solid var(--border);
@@ -519,6 +537,7 @@
         <input type="text" id="tree-search" placeholder="Filter files..." />
       </div>
       <div class="tree-container" id="tree-container"></div>
+      <div id="sidebar-resize"></div>
     </div>
 
     <div id="main">
@@ -534,6 +553,7 @@
         <button class="zoom-btn" id="zoom-fit" title="Fit to screen" style="font-size:11px;">&#8862;</button>
       </div>
       <div id="panel">
+        <div id="panel-resize"></div>
         <div class="panel-header">
           <div class="panel-icon" id="p-icon"></div>
           <div class="panel-titles">
@@ -905,6 +925,29 @@ function run(data) {
   document.getElementById('sidebar-collapse').addEventListener('click', () => {
     document.getElementById('sidebar').classList.add('collapsed');
     document.getElementById('btn-tree').classList.remove('active');
+  });
+
+  // ===== SIDEBAR RESIZE =====
+  const sidebarEl = document.getElementById('sidebar');
+  const sidebarResize = document.getElementById('sidebar-resize');
+  let sidebarResizing = false;
+  sidebarResize.addEventListener('mousedown', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    sidebarResizing = true; sidebarResize.classList.add('dragged');
+    const startX = e.clientX, startW = sidebarEl.offsetWidth;
+    const minW = 120, maxW = Math.max(400, window.innerWidth * 0.45);
+    function onMove(ev) {
+      if (!sidebarResizing) return;
+      const w = Math.min(maxW, Math.max(minW, startW + ev.clientX - startX));
+      sidebarEl.style.width = w + 'px';
+    }
+    function onUp() {
+      sidebarResizing = false; sidebarResize.classList.remove('dragged');
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
   });
 
   // ===== VIEWPORT =====
@@ -1329,6 +1372,26 @@ function run(data) {
 
   document.getElementById('p-close').addEventListener('click', closePanel);
   viewport.addEventListener('click', function(e) { if (e.target === viewport || e.target === world) closePanel(); });
+
+  // ===== PANEL RESIZE =====
+  var panelResizeEl = document.getElementById('panel-resize');
+  panelResizeEl.addEventListener('mousedown', function(e) {
+    e.preventDefault(); e.stopPropagation();
+    panelResizeEl.classList.add('dragging');
+    var startX = e.clientX, startW = panel.offsetWidth;
+    var minW = 280, maxW = Math.max(600, window.innerWidth * 0.85);
+    function onMove(ev) {
+      var w = Math.min(maxW, Math.max(minW, startW - (ev.clientX - startX)));
+      panel.style.width = w + 'px';
+    }
+    function onUp() {
+      panelResizeEl.classList.remove('dragging');
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  });
 
   function closePanel() {
     selectedId = null; panel.classList.remove('open');
