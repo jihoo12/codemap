@@ -1,0 +1,1424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Codemap</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface-2: #1c2129;
+    --surface-3: #21262d;
+    --border: #30363d;
+    --border-light: #484f58;
+    --text: #e6edf3;
+    --text-2: #8b949e;
+    --text-3: #6e7681;
+    --accent: #58a6ff;
+    --accent-emphasis: #1f6feb;
+    --success: #3fb950;
+    --warning: #d29922;
+    --danger: #f85149;
+    --mono: 'SF Mono', 'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+    --radius: 6px;
+    --radius-lg: 12px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.2);
+    --shadow-lg: 0 4px 16px rgba(0,0,0,0.4), 0 8px 32px rgba(0,0,0,0.3);
+    --transition: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans); overflow: hidden; -webkit-font-smoothing: antialiased; }
+
+  #app { display: flex; flex-direction: column; height: 100vh; }
+
+  /* ===== HEADER ===== */
+  header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0; z-index: 20;
+    height: 48px;
+  }
+  .logo { display: flex; align-items: center; gap: 8px; }
+  .logo svg { width: 20px; height: 20px; }
+  .logo-text { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+  .header-divider { width: 1px; height: 20px; background: var(--border); }
+  .stats {
+    display: flex; align-items: center; gap: 12px;
+    font-size: 12px; color: var(--text-2);
+  }
+  .stats .stat { display: flex; align-items: center; gap: 4px; }
+  .stats .stat-num { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .header-spacer { flex: 1; }
+  .header-actions { display: flex; align-items: center; gap: 8px; }
+
+  /* ===== SEARCH ===== */
+  .search-box { position: relative; display: flex; align-items: center; }
+  .search-box input {
+    background: var(--surface-2); border: 1px solid var(--border);
+    color: var(--text); border-radius: var(--radius); padding: 5px 10px 5px 30px;
+    font-size: 12px; font-family: var(--sans); width: 280px; outline: none;
+    transition: border-color var(--transition), box-shadow var(--transition);
+  }
+  .search-box input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(88,166,255,0.15);
+  }
+  .search-box input::placeholder { color: var(--text-3); }
+  .search-box .search-icon {
+    position: absolute; left: 8px; color: var(--text-3); pointer-events: none;
+    width: 14px; height: 14px;
+  }
+  .search-box .search-count {
+    position: absolute; right: 8px; font-size: 10px; color: var(--text-3);
+    pointer-events: none;
+  }
+  .kbd {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 18px; height: 18px; padding: 0 4px;
+    background: var(--surface-3); border: 1px solid var(--border);
+    border-radius: 4px; font-size: 10px; font-family: var(--mono);
+    color: var(--text-3); line-height: 1;
+  }
+  .search-mode-toggle {
+    display: flex; align-items: center; gap: 2px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 2px;
+  }
+  .search-mode-btn {
+    padding: 2px 8px; border: none; background: none;
+    color: var(--text-3); font-size: 10px; font-family: var(--sans);
+    border-radius: 4px; cursor: pointer; white-space: nowrap;
+    transition: all var(--transition);
+  }
+  .search-mode-btn.active {
+    background: var(--accent-emphasis); color: #fff;
+  }
+  .search-mode-btn:hover:not(.active) { color: var(--text); background: var(--surface-3); }
+
+  /* ===== SEARCH DROPDOWN ===== */
+  #search-dropdown {
+    display: none; position: absolute; top: 100%; left: 0; right: 0;
+    margin-top: 4px; max-height: 360px; overflow-y: auto;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); box-shadow: var(--shadow-lg);
+    z-index: 100;
+  }
+  #search-dropdown.visible { display: block; }
+  .search-group-label {
+    padding: 6px 12px 2px; font-size: 10px; font-weight: 600;
+    color: var(--text-3); text-transform: uppercase; letter-spacing: 0.5px;
+    position: sticky; top: 0; background: var(--surface);
+  }
+  .search-item {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 6px 12px; cursor: pointer; border-bottom: 1px solid transparent;
+    transition: background 80ms;
+  }
+  .search-item:hover, .search-item.active {
+    background: var(--surface-2);
+  }
+  .search-item.active { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 2px; }
+  .search-item-icon {
+    width: 22px; height: 22px; border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 8px; font-family: var(--mono); font-weight: 700;
+    color: #fff; flex-shrink: 0; text-transform: uppercase;
+    margin-top: 1px;
+  }
+  .search-item-info { flex: 1; min-width: 0; }
+  .search-item-name {
+    font-family: var(--mono); font-size: 12px; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .search-item-name b { color: var(--accent); font-weight: 600; }
+  .search-item-path {
+    font-size: 11px; color: var(--text-3); margin-top: 1px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-family: var(--mono);
+  }
+  .search-item-match {
+    font-size: 11px; color: var(--text-2); margin-top: 2px;
+    font-family: var(--mono); line-height: 1.4;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .search-item-match b { color: var(--warning); font-weight: 600; }
+  .search-item-type {
+    font-size: 9px; color: var(--text-3); background: var(--surface-3);
+    border-radius: 3px; padding: 1px 5px; flex-shrink: 0; margin-top: 2px;
+  }
+  .search-empty {
+    padding: 16px; text-align: center; color: var(--text-3); font-size: 12px;
+  }
+  .search-footer {
+    padding: 6px 12px; border-top: 1px solid var(--border);
+    font-size: 10px; color: var(--text-3); display: flex; gap: 12px;
+    background: var(--surface);
+    position: sticky; bottom: 0;
+  }
+  .search-footer kbd {
+    display: inline; padding: 0 3px; background: var(--surface-3);
+    border: 1px solid var(--border); border-radius: 3px;
+    font-family: var(--mono); font-size: 9px;
+  }
+
+  /* ===== BREADCRUMB ===== */
+  #breadcrumb {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 15;
+    display: none; align-items: center; gap: 4px;
+    padding: 6px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    font-size: 12px; color: var(--text-2);
+    font-family: var(--mono);
+  }
+  #breadcrumb.visible { display: flex; }
+  #breadcrumb .bc-sep { color: var(--text-3); }
+  #breadcrumb .bc-item { color: var(--accent); cursor: pointer; }
+  #breadcrumb .bc-item:hover { text-decoration: underline; }
+  #breadcrumb .bc-current { color: var(--text); }
+
+  /* ===== MAIN CANVAS ===== */
+  #main { flex: 1; position: relative; overflow: hidden; }
+  #viewport {
+    position: absolute; inset: 0; overflow: hidden; cursor: grab;
+  }
+  #viewport.dragging { cursor: grabbing; }
+  #world {
+    position: absolute; top: 0; left: 0;
+    transform-origin: 0 0; will-change: transform;
+  }
+
+  /* ===== GROUPS ===== */
+  .group {
+    position: absolute; border-radius: var(--radius-lg);
+    border: 1.5px solid; transition: opacity 0.15s;
+  }
+  .group-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 12px; border-radius: 11px 11px 0 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+  .group-name {
+    font-family: var(--mono); font-size: 12px; font-weight: 600;
+    color: var(--text); white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; max-width: 55%; letter-spacing: -0.01em;
+  }
+  .group-meta {
+    font-family: var(--mono); font-size: 10px; color: var(--text-3);
+    white-space: nowrap;
+  }
+  .group-toggle {
+    width: 18px; height: 18px; display: flex; align-items: center;
+    justify-content: center; font-size: 11px; color: var(--text-3);
+    cursor: pointer; border-radius: 4px; flex-shrink: 0;
+    transition: all var(--transition);
+  }
+  .group-toggle:hover { color: var(--text); background: rgba(255,255,255,0.08); }
+
+  /* ===== FILES ===== */
+  .file {
+    position: absolute; display: flex; align-items: center;
+    border-radius: 5px; font-family: var(--mono); font-size: 10px;
+    font-weight: 500; color: #fff; cursor: pointer; text-align: center;
+    padding: 0 8px; overflow: hidden; white-space: nowrap;
+    text-overflow: ellipsis; border: 1px solid rgba(0,0,0,0.2);
+    user-select: none; letter-spacing: 0.01em;
+    transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.15s;
+  }
+  .file:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    z-index: 2;
+  }
+  .file.selected {
+    outline: 2px solid var(--warning); outline-offset: -1px;
+    z-index: 3;
+  }
+  .file.dimmed, .group.dimmed { opacity: 0.08; pointer-events: none; }
+
+  /* ===== MINIMAP ===== */
+  #minimap {
+    position: absolute; bottom: 16px; left: 16px; z-index: 15;
+    width: 180px; height: 120px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden;
+    box-shadow: var(--shadow); cursor: pointer;
+    transition: opacity var(--transition);
+  }
+  #minimap:hover .minimap-viewport { border-color: var(--accent); }
+  #minimap canvas { width: 100%; height: 100%; }
+  .minimap-viewport {
+    position: absolute; border: 1.5px solid var(--text-3);
+    border-radius: 2px; pointer-events: none;
+    transition: border-color var(--transition);
+  }
+
+  /* ===== ZOOM CONTROLS ===== */
+  #zoom-controls {
+    position: absolute; bottom: 16px; right: 16px; z-index: 15;
+    display: flex; flex-direction: column; gap: 2px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden;
+    box-shadow: var(--shadow);
+  }
+  .zoom-btn {
+    width: 32px; height: 32px; display: flex; align-items: center;
+    justify-content: center; background: none; border: none;
+    color: var(--text-2); font-size: 16px; cursor: pointer;
+    transition: all var(--transition);
+  }
+  .zoom-btn:hover { background: var(--surface-2); color: var(--text); }
+  .zoom-btn + .zoom-btn { border-top: 1px solid var(--border); }
+  #zoom-level {
+    font-size: 10px; text-align: center; color: var(--text-3);
+    padding: 2px 0; font-family: var(--mono);
+    border-top: 1px solid var(--border);
+  }
+
+  /* ===== SIDE PANEL ===== */
+  #panel {
+    position: absolute; top: 0; right: 0; bottom: 0;
+    width: 500px; max-width: 90vw;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    transform: translateX(100%);
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    display: flex; flex-direction: column;
+    z-index: 25;
+    box-shadow: -4px 0 24px rgba(0,0,0,0.3);
+  }
+  #panel.open { transform: translateX(0); }
+
+  .panel-header {
+    padding: 14px 16px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: flex-start; gap: 12px;
+    background: var(--surface);
+  }
+  .panel-header .file-icon {
+    width: 32px; height: 32px; border-radius: var(--radius);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-family: var(--mono); font-weight: 700;
+    color: #fff; flex-shrink: 0; text-transform: uppercase;
+  }
+  .panel-header .titles { flex: 1; min-width: 0; }
+  .panel-header .fname {
+    font-family: var(--mono); font-size: 14px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .panel-header .fdir {
+    font-size: 11px; color: var(--text-3); margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-family: var(--mono);
+  }
+  .panel-close {
+    background: none; border: 1px solid var(--border);
+    color: var(--text-3); border-radius: var(--radius);
+    width: 28px; height: 28px; display: flex; align-items: center;
+    justify-content: center; cursor: pointer; flex-shrink: 0;
+    font-size: 14px; transition: all var(--transition);
+  }
+  .panel-close:hover { color: var(--text); border-color: var(--text-3); background: var(--surface-2); }
+
+  .panel-meta {
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    display: flex; gap: 16px; flex-wrap: wrap;
+  }
+  .meta-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 11px; color: var(--text-2);
+    background: var(--surface-2); border-radius: 4px;
+    padding: 2px 8px;
+  }
+  .meta-chip strong { color: var(--text-2); font-weight: 500; }
+
+  .panel-refs { padding: 10px 16px; border-bottom: 1px solid var(--border); }
+  .ref-section { margin: 4px 0; }
+  .ref-summary {
+    cursor: pointer; font-size: 11px; color: var(--text-3);
+    text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;
+    padding: 4px 0; list-style: none;
+    display: flex; align-items: center; gap: 6px; user-select: none;
+  }
+  .ref-summary:hover { color: var(--text); }
+  .ref-summary::-webkit-details-marker { display: none; }
+  .ref-summary::before {
+    content: ''; display: inline-block; width: 0; height: 0;
+    border-left: 5px solid currentColor; border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent; transition: transform 0.15s;
+  }
+  details[open] > .ref-summary::before { transform: rotate(90deg); }
+  .ref-badge {
+    background: var(--surface-3); border-radius: 10px;
+    padding: 0 6px; font-size: 10px; color: var(--text-3);
+    font-weight: 500; font-variant-numeric: tabular-nums;
+  }
+  .ref-list { padding: 4px 0 8px 14px; }
+  .ref-link {
+    display: flex; align-items: center; gap: 4px;
+    color: var(--accent); text-decoration: none;
+    font-family: var(--mono); font-size: 11px; padding: 3px 6px;
+    cursor: pointer; border-radius: 4px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    transition: background var(--transition);
+  }
+  .ref-link:hover { background: rgba(88,166,255,0.1); text-decoration: none; }
+  .ref-arrow { color: var(--text-3); font-size: 10px; }
+  .ref-none { color: var(--text-3); font-style: italic; padding: 4px 6px; font-size: 11px; }
+  .ref-actions { display: flex; gap: 8px; padding: 2px 0 4px; }
+  .ref-action-btn {
+    background: none; border: none; color: var(--text-3);
+    font-size: 10px; cursor: pointer; text-decoration: underline; padding: 0;
+  }
+  .ref-action-btn:hover { color: var(--accent); }
+
+  .panel-content { flex: 1; overflow: auto; background: var(--bg); }
+  .panel-content pre {
+    margin: 0; padding: 16px; font-family: var(--mono);
+    font-size: 12px; line-height: 1.6; color: #e6edf3; tab-size: 2;
+  }
+  .panel-content pre code { font-family: inherit; }
+  .panel-content .binary-note, .panel-content .empty-note {
+    padding: 32px 16px; color: var(--text-3); font-size: 13px;
+    font-style: italic; text-align: center;
+  }
+  .panel-content pre.shiki { background: var(--bg) !important; padding: 16px; overflow-x: auto; }
+  .panel-content pre.shiki code { display: inline-block; min-width: 100%; }
+
+  /* ===== EMPTY STATE ===== */
+  #empty-state {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    color: var(--text-3); gap: 12px;
+  }
+  #empty-state .empty-icon { font-size: 48px; opacity: 0.3; }
+  #empty-state .empty-text { font-size: 14px; }
+
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--border-light); }
+  ::-webkit-scrollbar-track { background: transparent; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>
+      </svg>
+      <span class="logo-text">Codemap</span>
+    </div>
+    <div class="header-divider"></div>
+    <div class="stats" id="stats"></div>
+    <div class="header-spacer"></div>
+    <div class="header-actions">
+      <div class="search-mode-toggle">
+        <button class="search-mode-btn active" data-mode="all">All</button>
+        <button class="search-mode-btn" data-mode="files">Files</button>
+        <button class="search-mode-btn" data-mode="content">Content</button>
+      </div>
+      <div class="search-box">
+        <svg class="search-icon" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M10.68 11.74a6 6 0 0 1-7.922-8.982 6 6 0 0 1 8.982 7.922l3.04 3.04a.749.749 0 1 1-1.06 1.06l-3.04-3.04ZM11.5 7a4.499 4.499 0 1 0-8.997 0A4.499 4.499 0 0 0 11.5 7Z"/>
+        </svg>
+        <input type="text" id="search" placeholder="Fuzzy search files & content..." autocomplete="off" spellcheck="false" />
+        <span class="search-count" id="search-count"></span>
+        <div id="search-dropdown"></div>
+      </div>
+      <span class="kbd">/</span>
+    </div>
+  </header>
+  <div id="main">
+    <div id="viewport">
+      <div id="world"></div>
+    </div>
+    <div id="breadcrumb"></div>
+    <div id="minimap"><canvas></canvas><div class="minimap-viewport"></div></div>
+    <div id="zoom-controls">
+      <button class="zoom-btn" id="zoom-in" title="Zoom in">+</button>
+      <div id="zoom-level">100%</div>
+      <button class="zoom-btn" id="zoom-out" title="Zoom out">-</button>
+      <button class="zoom-btn" id="zoom-fit" title="Fit to screen" style="font-size:12px;">&#8862;</button>
+    </div>
+    <div id="panel">
+      <div class="panel-header">
+        <div class="file-icon" id="p-icon"></div>
+        <div class="titles">
+          <div class="fname" id="p-fname">&mdash;</div>
+          <div class="fdir" id="p-fdir">&mdash;</div>
+        </div>
+        <button class="panel-close" id="p-close">&times;</button>
+      </div>
+      <div class="panel-meta" id="p-meta"></div>
+      <div class="panel-refs" id="p-refs"></div>
+      <div class="panel-content" id="p-content"></div>
+    </div>
+    <div id="empty-state" style="display:none;">
+      <div class="empty-icon">&#128269;</div>
+      <div class="empty-text">No files found</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const DATA = /*__CODEMAP_DATA__*/;
+
+const COLLAPSE_THRESHOLD = 150;
+const FILE_W = 130;
+const FILE_H = 28;
+const FILE_GAP = 6;
+const FILES_PER_ROW = 3;
+const GROUP_PAD = 12;
+const GROUP_HEADER_H = 28;
+const GROUP_GAP = 20;
+const MAX_CHILD_ROW_W = 1400;
+const MAX_SEARCH_RESULTS = 50;
+const MAX_CONTENT_RESULTS = 30;
+
+const GROUP_COLORS = [
+  '#58a6ff','#f0883e','#bc8cff','#3fb950','#f778ba',
+  '#79c0ff','#d2a8ff','#56d364','#ff7b72','#ffa657',
+  '#7ee787','#ff9bce','#a5d6ff','#d2a8ff','#b392f0',
+  '#f97583','#85e89d','#ffdf5d','#76e3ea','#db61a2',
+];
+
+const DIR_COLOR = {};
+let colorIdx = 0;
+function getColor(dir) {
+  if (!DIR_COLOR[dir]) { DIR_COLOR[dir] = GROUP_COLORS[colorIdx++ % GROUP_COLORS.length]; }
+  return DIR_COLOR[dir];
+}
+
+const EXT_COLORS = {
+  '.js':'#f1e05a','.jsx':'#f1e05a','.mjs':'#f1e05a',
+  '.ts':'#3178c6','.tsx':'#3178c6',
+  '.py':'#3572A5','.json':'#8bc34a','.jsonc':'#8bc34a',
+  '.md':'#888','.html':'#e34c26','.htm':'#e34c26',
+  '.css':'#563d7c','.scss':'#c6538c','.less':'#1d365d',
+  '.java':'#b07219','.go':'#00ADD8','.rs':'#dea584',
+  '.rb':'#701516','.php':'#4F5D95',
+  '.c':'#555','.h':'#555','.cpp':'#f34b7d','.hpp':'#f34b7d',
+  '.cs':'#178600','.swift':'#F05138','.kt':'#A97BFF',
+  '.scala':'#c22d40','.r':'#198CE7','.lua':'#000080',
+  '.sh':'#89e051','.bash':'#89e051','.zsh':'#89e051',
+  '.yaml':'#cb171e','.yml':'#cb171e','.toml':'#9c4221',
+  '.xml':'#0060ac','.sql':'#e38c00',
+  '.graphql':'#e10098','.gql':'#e10098',
+  '.dart':'#00B4AB','.zig':'#ec915c','.hs':'#5e5086',
+  '.vue':'#41b883','.svelte':'#ff3e00',
+  '.dockerfile':'#384d54','.env':'#ecd53f',
+};
+
+function extColor(ext) { return EXT_COLORS[ext] || '#6e7681'; }
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function fmtBytes(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n/1024).toFixed(1) + ' KB';
+  if (n < 1073741824) return (n/1048576).toFixed(1) + ' MB';
+  return (n/1073741824).toFixed(1) + ' GB';
+}
+
+// ===== FUZZY SEARCH ENGINE =====
+const FuzzySearch = (() => {
+
+  function fuzzyScore(pattern, text) {
+    if (!pattern || !text) return 0;
+    pattern = pattern.toLowerCase();
+    text = text.toLowerCase();
+
+    if (text === pattern) return 1000;
+    if (text.startsWith(pattern)) return 900 + Math.max(0, 50 - text.length);
+    if (text.includes(pattern)) return 700 + Math.max(0, 50 - text.length);
+
+    let pi = 0, ti = 0, score = 0, consecutive = 0, lastMatchIdx = -2;
+    while (pi < pattern.length && ti < text.length) {
+      if (pattern[pi] === text[ti]) {
+        score += 10;
+        if (ti === lastMatchIdx + 1) {
+          consecutive++;
+          score += consecutive * 5;
+        } else {
+          consecutive = 0;
+        }
+        if (ti === 0 || text[ti - 1] === '/' || text[ti - 1] === '.' || text[ti - 1] === '_' || text[ti - 1] === '-') {
+          score += 20;
+        }
+        lastMatchIdx = ti;
+        pi++;
+      }
+      ti++;
+    }
+    return pi === pattern.length ? score : 0;
+  }
+
+  function findMatchIndices(pattern, text) {
+    if (!pattern || !text) return [];
+    const pl = pattern.toLowerCase();
+    const tl = text.toLowerCase();
+    const indices = [];
+    let pi = 0;
+    for (let ti = 0; ti < tl.length && pi < pl.length; ti++) {
+      if (pl[pi] === tl[ti]) {
+        indices.push(ti);
+        pi++;
+      }
+    }
+    return pi === pl.length ? indices : [];
+  }
+
+  function highlightMatches(text, indices) {
+    if (!indices.length) return esc(text);
+    let result = '';
+    let prevIdx = 0;
+    for (const idx of indices) {
+      result += esc(text.slice(prevIdx, idx));
+      result += '<b>' + esc(text[idx]) + '</b>';
+      prevIdx = idx + 1;
+    }
+    result += esc(text.slice(prevIdx));
+    return result;
+  }
+
+  function findContentSnippet(pattern, content, contextLen) {
+    if (!content || !pattern) return null;
+    const lower = content.toLowerCase();
+    const pLower = pattern.toLowerCase();
+    const idx = lower.indexOf(pLower);
+    if (idx === -1) return null;
+
+    const lines = content.split('\n');
+    let charCount = 0;
+    let matchLine = 0;
+    for (let i = 0; i < lines.length; i++) {
+      if (charCount + lines[i].length >= idx) {
+        matchLine = i;
+        break;
+      }
+      charCount += lines[i].length + 1;
+    }
+
+    const start = Math.max(0, matchLine - 1);
+    const end = Math.min(lines.length, matchLine + 2);
+    const snippetLines = lines.slice(start, end);
+    const matchLineLocal = matchLine - start;
+
+    return {
+      text: snippetLines.join('\n'),
+      matchLine: matchLineLocal,
+      matchLineNum: matchLine + 1,
+    };
+  }
+
+  function highlightContentSnippet(snippet, pattern) {
+    if (!snippet) return '';
+    const lines = snippet.text.split('\n');
+    return lines.map((line, i) => {
+      const prefix = (i === snippet.matchLine) ? '<span style="color:var(--text-3)">' + snippet.matchLineNum + '</span> ' : '<span style="color:var(--text-3)">  </span> ';
+      const highlighted = highlightSnippetLine(line, pattern);
+      const bg = (i === snippet.matchLine) ? 'background:rgba(210,153,34,0.08);' : '';
+      return '<div style="' + bg + 'padding:0 2px;border-radius:2px;">' + prefix + highlighted + '</div>';
+    }).join('');
+  }
+
+  function highlightSnippetLine(line, pattern) {
+    const lower = line.toLowerCase();
+    const pLower = pattern.toLowerCase();
+    const idx = lower.indexOf(pLower);
+    if (idx === -1) return esc(line);
+    return esc(line.slice(0, idx))
+      + '<b>' + esc(line.slice(idx, idx + pattern.length)) + '</b>'
+      + esc(line.slice(idx + pattern.length));
+  }
+
+  function searchFileNames(query, nodes) {
+    const q = query.toLowerCase();
+    const results = [];
+
+    for (const n of nodes) {
+      if (n.binary) continue;
+      const nameScore = fuzzyScore(q, n.name);
+      const pathScore = fuzzyScore(q, n.id) * 0.8;
+      const score = Math.max(nameScore, pathScore);
+
+      if (score > 0) {
+        results.push({
+          type: 'file',
+          node: n,
+          score,
+          nameIndices: findMatchIndices(query, n.name),
+          pathIndices: findMatchIndices(query, n.id),
+        });
+      }
+    }
+
+    results.sort((a, b) => b.score - a.score);
+    return results.slice(0, MAX_SEARCH_RESULTS);
+  }
+
+  function searchContent(query, nodes) {
+    const q = query.toLowerCase();
+    const results = [];
+
+    for (const n of nodes) {
+      if (n.binary || !n.content) continue;
+      const lower = n.content.toLowerCase();
+      const idx = lower.indexOf(q);
+      if (idx === -1) continue;
+
+      let matchCount = 0;
+      let searchIdx = 0;
+      while ((searchIdx = lower.indexOf(q, searchIdx)) !== -1) {
+        matchCount++;
+        searchIdx += q.length;
+      }
+
+      const snippet = findContentSnippet(query, n.content, null);
+      results.push({
+        type: 'content',
+        node: n,
+        score: 1000 + matchCount * 10 + Math.max(0, 100 - n.content.length / 1000),
+        matchCount,
+        snippet,
+      });
+    }
+
+    results.sort((a, b) => b.score - a.score);
+    return results.slice(0, MAX_CONTENT_RESULTS);
+  }
+
+  return { searchFileNames, searchContent, highlightMatches, highlightContentSnippet, findMatchIndices };
+})();
+
+
+// Stats bar
+const statsEl = document.getElementById('stats');
+statsEl.innerHTML =
+  '<span class="stat"><span class="stat-num">' + DATA.nodes.length + '</span> files</span>' +
+  '<span class="stat"><span class="stat-num">' + DATA.dirs.length + '</span> dirs</span>' +
+  '<span class="stat"><span class="stat-num">' + DATA.edges.length + '</span> refs</span>';
+
+if (!DATA.nodes.length) {
+  document.getElementById('empty-state').style.display = 'flex';
+} else {
+  run(DATA);
+}
+
+function run(data) {
+  const byId = new Map(data.nodes.map(n => [n.id, n]));
+  const tree = buildTree(data);
+  const stats = dirStats(tree, byId);
+
+  function buildTree(d) {
+    const dirs = new Map();
+    dirs.set('', { id:'', name:'(root)', parent:null, childDirs:[], files:[] });
+    function ensure(p) {
+      if (dirs.has(p)) return dirs.get(p);
+      const i = p.lastIndexOf('/');
+      const pp = i === -1 ? '' : p.slice(0, i);
+      const nm = i === -1 ? p : p.slice(i+1);
+      const par = ensure(pp);
+      const nd = { id:p, name:nm, parent:pp, childDirs:[], files:[] };
+      dirs.set(p, nd);
+      par.childDirs.push(p);
+      return nd;
+    }
+    for (const dd of d.dirs) { if (dd !== '') ensure(dd); }
+    for (const n of d.nodes) ensure(n.dir).files.push(n.id);
+    return dirs;
+  }
+
+  function dirStats(tr, byId) {
+    const m = new Map();
+    function go(p) {
+      if (m.has(p)) return m.get(p);
+      const nd = tr.get(p);
+      let fc = nd.files.length, sz = 0;
+      for (const f of nd.files) { const n = byId.get(f); sz += (n && n.size) || 0; }
+      for (const c of nd.childDirs) { const s = go(c); fc += s.fc; sz += s.sz; }
+      const r = { fc, sz }; m.set(p, r); return r;
+    }
+    for (const p of tr.keys()) go(p);
+    return m;
+  }
+
+  let expanded = data.nodes.length <= COLLAPSE_THRESHOLD
+    ? new Set(tree.keys())
+    : new Set(['']);
+
+  const outMap = new Map(), inMap = new Map();
+  for (const n of data.nodes) { outMap.set(n.id, []); inMap.set(n.id, []); }
+  for (const e of data.edges) {
+    if (outMap.has(e.from) && inMap.has(e.to)) {
+      outMap.get(e.from).push(e.to);
+      inMap.get(e.to).push(e.from);
+    }
+  }
+
+  const viewport = document.getElementById('viewport');
+  const world = document.getElementById('world');
+  let tx = 0, ty = 0, scale = 1;
+  let dragging = false, dragStartX, dragStartY, dragTx, dragTy;
+  let selectedId = null;
+
+  function applyTransform() {
+    world.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')';
+    document.getElementById('zoom-level').textContent = Math.round(scale * 100) + '%';
+    updateMinimap();
+  }
+
+  function fitToContent() {
+    const r = world.getBoundingClientRect();
+    const vw = viewport.clientWidth, vh = viewport.clientHeight;
+    if (r.width < 1 || r.height < 1) return;
+    const pad = 60;
+    const sx = vw / (r.width + pad * 2);
+    const sy = vh / (r.height + pad * 2);
+    scale = Math.min(sx, sy, 1.5);
+    tx = (vw - r.width * scale) / 2 - r.left * scale;
+    ty = (vh - r.height * scale) / 2 - r.top * scale;
+    applyTransform();
+  }
+
+  function zoomTo(newScale, cx, cy) {
+    const rect = viewport.getBoundingClientRect();
+    if (cx === undefined) cx = rect.width / 2;
+    if (cy === undefined) cy = rect.height / 2;
+    const ns = Math.min(6, Math.max(0.05, newScale));
+    tx = cx - (cx - tx) * (ns / scale);
+    ty = cy - (cy - ty) * (ns / scale);
+    scale = ns;
+    applyTransform();
+  }
+
+  document.getElementById('zoom-in').addEventListener('click', () => zoomTo(scale * 1.3));
+  document.getElementById('zoom-out').addEventListener('click', () => zoomTo(scale / 1.3));
+  document.getElementById('zoom-fit').addEventListener('click', fitToContent);
+
+  // Pan
+  viewport.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    dragging = true; dragStartX = e.clientX; dragStartY = e.clientY;
+    dragTx = tx; dragTy = ty; viewport.classList.add('dragging');
+  });
+  window.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    tx = dragTx + (e.clientX - dragStartX); ty = dragTy + (e.clientY - dragStartY);
+    applyTransform();
+  });
+  window.addEventListener('mouseup', () => { dragging = false; viewport.classList.remove('dragging'); });
+
+  viewport.addEventListener('wheel', e => {
+    e.preventDefault();
+    const rect = viewport.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    zoomTo(scale * delta, mx, my);
+  }, { passive: false });
+
+  // Touch
+  let lastTouchDist = 0;
+  viewport.addEventListener('touchstart', e => {
+    if (e.touches.length === 1) {
+      dragging = true; dragStartX = e.touches[0].clientX; dragStartY = e.touches[0].clientY;
+      dragTx = tx; dragTy = ty;
+    } else if (e.touches.length === 2) {
+      dragging = false;
+      const dx = e.touches[1].clientX - e.touches[0].clientX;
+      const dy = e.touches[1].clientY - e.touches[0].clientY;
+      lastTouchDist = Math.sqrt(dx*dx + dy*dy);
+    }
+  }, { passive: true });
+  viewport.addEventListener('touchmove', e => {
+    e.preventDefault();
+    if (e.touches.length === 1 && dragging) {
+      tx = dragTx + (e.touches[0].clientX - dragStartX);
+      ty = dragTy + (e.touches[0].clientY - dragStartY);
+      applyTransform();
+    } else if (e.touches.length === 2) {
+      const dx = e.touches[1].clientX - e.touches[0].clientX;
+      const dy = e.touches[1].clientY - e.touches[0].clientY;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (lastTouchDist > 0) {
+        const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        zoomTo(scale * (dist / lastTouchDist), midX, midY);
+      }
+      lastTouchDist = dist;
+    }
+  }, { passive: false });
+  viewport.addEventListener('touchend', () => { dragging = false; lastTouchDist = 0; });
+
+  // ===== FUZZY SEARCH =====
+  const searchEl = document.getElementById('search');
+  const searchCountEl = document.getElementById('search-count');
+  const dropdownEl = document.getElementById('search-dropdown');
+  let searchMode = 'all';
+  let searchResults = [];
+  let activeIdx = -1;
+  let searchOpen = false;
+
+  document.querySelectorAll('.search-mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.search-mode-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      searchMode = btn.dataset.mode;
+      doFuzzySearch();
+    });
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key === '/' && document.activeElement !== searchEl) {
+      e.preventDefault(); searchEl.focus(); searchEl.select();
+    }
+    if (e.key === 'Escape') {
+      if (searchOpen) { closeSearch(); }
+      else { closePanel(); }
+    }
+  });
+
+  searchEl.addEventListener('focus', () => { if (searchEl.value.trim()) doFuzzySearch(); });
+  searchEl.addEventListener('blur', () => { setTimeout(closeSearch, 150); });
+
+  let searchTimer;
+  searchEl.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(doFuzzySearch, 50);
+  });
+
+  searchEl.addEventListener('keydown', e => {
+    if (!searchOpen || !searchResults.length) {
+      if (e.key === 'Enter') {
+        const q = searchEl.value.trim();
+        if (q) {
+          const ids = matchIds(q.toLowerCase());
+          if (ids.size) revealFile(ids.values().next().value);
+        }
+      }
+      return;
+    }
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeIdx = Math.min(activeIdx + 1, searchResults.length - 1);
+      renderDropdown();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIdx = Math.max(activeIdx - 1, 0);
+      renderDropdown();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeIdx >= 0 && activeIdx < searchResults.length) {
+        const r = searchResults[activeIdx];
+        closeSearch();
+        revealFile(r.node.id);
+        selectFile(r.node);
+      }
+    }
+  });
+
+  function doFuzzySearch() {
+    const q = searchEl.value.trim();
+    if (!q) { closeSearch(); clearSearchHighlights(); return; }
+
+    searchResults = [];
+    if (searchMode === 'all' || searchMode === 'files') {
+      searchResults.push(...FuzzySearch.searchFileNames(q, data.nodes));
+    }
+    if (searchMode === 'all' || searchMode === 'content') {
+      searchResults.push(...FuzzySearch.searchContent(q, data.nodes));
+    }
+
+    if (searchMode === 'all') {
+      searchResults.sort((a, b) => b.score - a.score);
+      searchResults = searchResults.slice(0, MAX_SEARCH_RESULTS);
+    }
+
+    activeIdx = searchResults.length > 0 ? 0 : -1;
+    searchOpen = true;
+    renderDropdown();
+    applySearchHighlights(q);
+  }
+
+  function renderDropdown() {
+    if (!searchResults.length) {
+      const q = searchEl.value.trim();
+      dropdownEl.innerHTML = '<div class="search-empty">No results for "' + esc(q) + '"</div>';
+      dropdownEl.classList.add('visible');
+      searchCountEl.textContent = '0';
+      return;
+    }
+
+    searchCountEl.textContent = searchResults.length + '+';
+
+    let html = '';
+    const fileResults = searchResults.filter(r => r.type === 'file');
+    const contentResults = searchResults.filter(r => r.type === 'content');
+
+    if (fileResults.length) {
+      html += '<div class="search-group-label">Files (' + fileResults.length + ')</div>';
+      fileResults.forEach((r, i) => {
+        const idx = searchResults.indexOf(r);
+        const ext = r.node.ext.replace('.', '').toUpperCase() || '?';
+        const nameHtml = FuzzySearch.highlightMatches(r.node.name, r.nameIndices);
+        const pathHtml = FuzzySearch.highlightMatches(r.node.id, r.pathIndices);
+        html += '<div class="search-item' + (idx === activeIdx ? ' active' : '') + '" data-idx="' + idx + '">'
+          + '<div class="search-item-icon" style="background:' + extColor(r.node.ext) + '">' + ext + '</div>'
+          + '<div class="search-item-info">'
+          + '<div class="search-item-name">' + nameHtml + '</div>'
+          + '<div class="search-item-path">' + pathHtml + '</div>'
+          + '</div>'
+          + '<span class="search-item-type">file</span>'
+          + '</div>';
+      });
+    }
+
+    if (contentResults.length) {
+      html += '<div class="search-group-label">Content (' + contentResults.length + ')</div>';
+      contentResults.forEach((r, i) => {
+        const idx = searchResults.indexOf(r);
+        const ext = r.node.ext.replace('.', '').toUpperCase() || '?';
+        const snippetHtml = r.snippet ? FuzzySearch.highlightContentSnippet(r.snippet, searchEl.value.trim()) : '';
+        html += '<div class="search-item' + (idx === activeIdx ? ' active' : '') + '" data-idx="' + idx + '">'
+          + '<div class="search-item-icon" style="background:' + extColor(r.node.ext) + '">' + ext + '</div>'
+          + '<div class="search-item-info">'
+          + '<div class="search-item-name">' + esc(r.node.name) + '</div>'
+          + '<div class="search-item-path">' + esc(r.node.id) + '</div>'
+          + (snippetHtml ? '<div class="search-item-match">' + snippetHtml + '</div>' : '')
+          + '</div>'
+          + '<span class="search-item-type">' + r.matchCount + ' match' + (r.matchCount > 1 ? 'es' : '') + '</span>'
+          + '</div>';
+      });
+    }
+
+    html += '<div class="search-footer">'
+      + '<span><kbd>&uarr;</kbd><kbd>&darr;</kbd> navigate</span>'
+      + '<span><kbd>Enter</kbd> select</span>'
+      + '<span><kbd>Esc</kbd> close</span>'
+      + '</div>';
+
+    dropdownEl.innerHTML = html;
+    dropdownEl.classList.add('visible');
+
+    dropdownEl.querySelectorAll('.search-item').forEach(el => {
+      el.addEventListener('mousedown', e => {
+        e.preventDefault();
+        const idx = parseInt(el.dataset.idx);
+        const r = searchResults[idx];
+        closeSearch();
+        revealFile(r.node.id);
+        selectFile(r.node);
+      });
+      el.addEventListener('mouseenter', () => {
+        activeIdx = parseInt(el.dataset.idx);
+        renderDropdown();
+      });
+    });
+
+    const activeEl = dropdownEl.querySelector('.search-item.active');
+    if (activeEl) activeEl.scrollIntoView({ block: 'nearest' });
+  }
+
+  function closeSearch() {
+    searchOpen = false;
+    dropdownEl.classList.remove('visible');
+    searchCountEl.textContent = '';
+  }
+
+  function clearSearchHighlights() {
+    world.querySelectorAll('.file').forEach(el => el.classList.remove('dimmed'));
+    world.querySelectorAll('.group').forEach(el => el.classList.remove('dimmed'));
+  }
+
+  function applySearchHighlights(q) {
+    if (!q) { clearSearchHighlights(); return; }
+    const ids = new Set();
+    for (const r of searchResults) ids.add(r.node.id);
+
+    world.querySelectorAll('.file').forEach(el => {
+      el.classList.toggle('dimmed', !ids.has(el.dataset.id));
+    });
+    world.querySelectorAll('.group').forEach(el => {
+      const dp = el.dataset.dir;
+      let hit = false;
+      for (const fid of ids) {
+        const f = byId.get(fid);
+        if (f && (f.dir === dp || (dp && f.dir.startsWith(dp + '/')))) { hit = true; break; }
+      }
+      el.classList.toggle('dimmed', !hit);
+    });
+  }
+
+  // Simple fallback for Enter without dropdown
+  function matchIds(q) {
+    const s = new Set();
+    if (!q) return s;
+    for (const n of data.nodes) {
+      if (n.name.toLowerCase().includes(q) || n.dir.toLowerCase().includes(q) || (n.content && n.content.toLowerCase().includes(q))) s.add(n.id);
+    }
+    return s;
+  }
+
+  // ===== LAYOUT ENGINE =====
+  const sizeMap = new Map();
+
+  function computeAllSizes(dirPath) {
+    const nd = tree.get(dirPath);
+    const isExp = expanded.has(dirPath);
+    let filesW = 0, filesH = 0;
+    if (isExp && nd.files.length > 0) {
+      const cols = Math.min(nd.files.length, FILES_PER_ROW);
+      const rows = Math.ceil(nd.files.length / FILES_PER_ROW);
+      filesW = cols * FILE_W + (cols - 1) * FILE_GAP;
+      filesH = rows * FILE_H + (rows - 1) * FILE_GAP;
+    }
+    const childRows = [];
+    if (isExp && nd.childDirs.length > 0) {
+      for (const c of nd.childDirs) computeAllSizes(c);
+      let curRow = [], curRowW = 0;
+      for (const c of nd.childDirs) {
+        const cs = sizeMap.get(c);
+        const gap = curRow.length > 0 ? GROUP_GAP : 0;
+        if (curRow.length > 0 && curRowW + gap + cs.w > MAX_CHILD_ROW_W) {
+          childRows.push({ dirs: curRow, w: curRowW, h: Math.max(...curRow.map(d => sizeMap.get(d).h)) });
+          curRow = []; curRowW = 0;
+        }
+        curRow.push(c); curRowW += gap + cs.w;
+      }
+      if (curRow.length) childRows.push({ dirs: curRow, w: curRowW, h: Math.max(...curRow.map(d => sizeMap.get(d).h)) });
+    }
+    const childrenW = childRows.length > 0 ? Math.max(...childRows.map(r => r.w)) : 0;
+    const childrenH = childRows.reduce((s, r) => s + r.h, 0) + Math.max(0, childRows.length - 1) * GROUP_GAP;
+    const contentW = Math.max(filesW, childrenW);
+    const hasF = filesH > 0, hasC = childrenH > 0;
+    const innerH = filesH + (hasF && hasC ? GROUP_GAP : 0) + childrenH;
+    sizeMap.set(dirPath, { w: contentW + GROUP_PAD * 2, h: GROUP_HEADER_H + GROUP_PAD + innerH + GROUP_PAD, filesW, filesH, childRows, contentW });
+  }
+
+  function positionGroup(dirPath, x, y) {
+    const sz = sizeMap.get(dirPath);
+    const nd = tree.get(dirPath);
+    const isExp = expanded.has(dirPath);
+    const results = [{ type: 'group', dir: dirPath, x, y, w: sz.w, h: sz.h }];
+    if (!isExp) return results;
+    let cy = y + GROUP_HEADER_H + GROUP_PAD;
+    if (nd.files.length > 0) {
+      const sorted = [...nd.files].sort((a, b) => (byId.get(a).name || '').localeCompare(byId.get(b).name || ''));
+      let idx = 0;
+      for (let row = 0; idx < sorted.length; row++) {
+        const colsInRow = Math.min(sorted.length - idx, FILES_PER_ROW);
+        const rowW = colsInRow * FILE_W + (colsInRow - 1) * FILE_GAP;
+        const rowOffX = (sz.contentW - rowW) / 2;
+        for (let col = 0; col < colsInRow; col++, idx++) {
+          results.push({ type: 'file', id: sorted[idx], fx: x + GROUP_PAD + rowOffX + col * (FILE_W + FILE_GAP), fy: cy + row * (FILE_H + FILE_GAP) });
+        }
+      }
+      cy += sz.filesH;
+    }
+    if (sz.childRows.length > 0) {
+      if (sz.filesH > 0) cy += GROUP_GAP;
+      for (const cr of sz.childRows) {
+        const rowOffX = (sz.contentW - cr.w) / 2;
+        let cx = x + GROUP_PAD + rowOffX;
+        for (const dir of cr.dirs) {
+          results.push(...positionGroup(dir, cx, cy));
+          cx += sizeMap.get(dir).w + GROUP_GAP;
+        }
+        cy += cr.h + GROUP_GAP;
+      }
+    }
+    return results;
+  }
+
+  // ===== MINIMAP =====
+  const minimapEl = document.getElementById('minimap');
+  const minimapCanvas = minimapEl.querySelector('canvas');
+  const minimapVP = minimapEl.querySelector('.minimap-viewport');
+  const minimapCtx = minimapCanvas.getContext('2d');
+  let worldBounds = { w: 0, h: 0 };
+
+  function updateMinimap() {
+    const vw = viewport.clientWidth, vh = viewport.clientHeight;
+    if (vw === 0 || vh === 0) return;
+    minimapCanvas.width = 180; minimapCanvas.height = 120;
+    minimapCtx.clearRect(0, 0, 180, 120);
+    if (worldBounds.w === 0) return;
+    const sx = 180 / worldBounds.w, sy = 120 / worldBounds.h;
+    const s = Math.min(sx, sy) * 0.9;
+    const ox = (180 - worldBounds.w * s) / 2, oy = (120 - worldBounds.h * s) / 2;
+    minimapCtx.save(); minimapCtx.translate(ox, oy); minimapCtx.scale(s, s);
+    const layout = lastLayout;
+    for (const item of layout) {
+      if (item.type === 'group') {
+        const gc = getColor(item.dir);
+        minimapCtx.fillStyle = gc + '20'; minimapCtx.strokeStyle = gc + '40';
+        minimapCtx.lineWidth = 1 / s;
+        minimapCtx.fillRect(item.x, item.y, item.w, item.h);
+        minimapCtx.strokeRect(item.x, item.y, item.w, item.h);
+      } else {
+        const f = byId.get(item.id);
+        minimapCtx.fillStyle = extColor(f ? f.ext : '');
+        minimapCtx.fillRect(item.fx, item.fy, FILE_W, FILE_H);
+      }
+    }
+    minimapCtx.restore();
+    const vpRect = viewport.getBoundingClientRect();
+    const vx = (-tx / scale) * s + ox;
+    const vy = (-ty / scale) * s + oy;
+    const vpw = (vpRect.width / scale) * s;
+    const vph = (vpRect.height / scale) * s;
+    minimapVP.style.left = Math.max(0, vx) + 'px';
+    minimapVP.style.top = Math.max(0, vy) + 'px';
+    minimapVP.style.width = Math.min(180, vpw) + 'px';
+    minimapVP.style.height = Math.min(120, vph) + 'px';
+  }
+
+  minimapEl.addEventListener('click', e => {
+    const rect = minimapEl.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const vw = viewport.clientWidth, vh = viewport.clientHeight;
+    const sx = 180 / worldBounds.w, sy = 120 / worldBounds.h;
+    const s = Math.min(sx, sy) * 0.9;
+    const ox = (180 - worldBounds.w * s) / 2, oy = (120 - worldBounds.h * s) / 2;
+    const worldX = (mx - ox) / s;
+    const worldY = (my - oy) / s;
+    tx = vw / 2 - worldX * scale;
+    ty = vh / 2 - worldY * scale;
+    applyTransform();
+  });
+
+  // ===== RENDER =====
+  let lastLayout = [];
+
+  function render() {
+    world.innerHTML = '';
+    sizeMap.clear();
+    computeAllSizes('');
+    const layout = positionGroup('', 0, 0);
+    lastLayout = layout;
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const item of layout) {
+      const x = item.x || item.fx || 0;
+      const y = item.y || item.fy || 0;
+      const w = item.w || FILE_W;
+      const h = item.h || FILE_H;
+      if (x < minX) minX = x; if (y < minY) minY = y;
+      if (x + w > maxX) maxX = x + w; if (y + h > maxY) maxY = y + h;
+    }
+    worldBounds.w = maxX - minX + 40; worldBounds.h = maxY - minY + 40;
+
+    for (const item of layout) {
+      if (item.type === 'group') {
+        const nd = tree.get(item.dir);
+        const st = stats.get(item.dir);
+        const isExp = expanded.has(item.dir);
+        const gc = getColor(item.dir);
+
+        const el = document.createElement('div');
+        el.className = 'group';
+        el.dataset.dir = item.dir;
+        el.style.cssText = 'left:' + item.x + 'px;top:' + item.y + 'px;width:' + item.w + 'px;height:' + item.h + 'px;border-color:' + gc + ';background:' + gc + '12';
+
+        const hdr = document.createElement('div');
+        hdr.className = 'group-header';
+        hdr.style.cssText = 'background:' + gc + '20;height:' + GROUP_HEADER_H + 'px';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'group-name';
+        nameSpan.textContent = item.dir === '' ? '(root)' : nd.name;
+        hdr.appendChild(nameSpan);
+
+        const metaSpan = document.createElement('span');
+        metaSpan.className = 'group-meta';
+        metaSpan.textContent = st.fc + ' files \u00b7 ' + fmtBytes(st.sz);
+        hdr.appendChild(metaSpan);
+
+        if (item.dir !== '') {
+          const tog = document.createElement('span');
+          tog.className = 'group-toggle';
+          tog.textContent = isExp ? '\u2212' : '+';
+          tog.addEventListener('click', (function(dp) {
+            return function(e) {
+              e.stopPropagation();
+              if (expanded.has(dp)) expanded.delete(dp); else expanded.add(dp);
+              render();
+            };
+          })(item.dir));
+          hdr.appendChild(tog);
+        }
+
+        el.appendChild(hdr);
+        world.appendChild(el);
+      } else if (item.type === 'file') {
+        const f = byId.get(item.id);
+        const fEl = document.createElement('div');
+        fEl.className = 'file';
+        fEl.dataset.id = item.id;
+        fEl.style.cssText = 'left:' + item.fx + 'px;top:' + item.fy + 'px;width:' + FILE_W + 'px;height:' + FILE_H + 'px;background:' + extColor(f.ext);
+        const displayName = f.name.length > 16 ? f.name.slice(0, 14) + '\u2026' : f.name;
+        fEl.textContent = displayName;
+        fEl.title = item.id;
+        fEl.addEventListener('click', (function(node) {
+          return function(e) { e.stopPropagation(); selectFile(node); };
+        })(f));
+        world.appendChild(fEl);
+      }
+    }
+
+    highlightSelected();
+    if (searchEl.value.trim()) doFuzzySearch();
+    setTimeout(function() { fitToContent(); updateMinimap(); }, 10);
+  }
+
+  // ===== SIDE PANEL =====
+  const panel = document.getElementById('panel');
+
+  function selectFile(d) {
+    selectedId = d.id;
+    document.querySelectorAll('.file.selected').forEach(function(e) { e.classList.remove('selected'); });
+    const el = world.querySelector('[data-id="' + CSS.escape(d.id) + '"]');
+    if (el) el.classList.add('selected');
+    highlightSelected();
+
+    const iconEl = document.getElementById('p-icon');
+    const ext = d.ext.replace('.', '').toUpperCase() || '?';
+    iconEl.textContent = ext;
+    iconEl.style.background = extColor(d.ext);
+
+    document.getElementById('p-fname').textContent = d.name;
+    document.getElementById('p-fdir').textContent = d.dir === '' ? '/' : '/' + d.dir;
+
+    const meta = document.getElementById('p-meta');
+    meta.innerHTML = '';
+    addMeta(meta, 'Size', fmtBytes(d.size));
+    addMeta(meta, 'Type', d.ext || '(none)');
+    if (d.truncated) addMeta(meta, 'Note', 'truncated');
+    if (outMap.has(d.id)) addMeta(meta, 'Outgoing', outMap.get(d.id).length + ' refs');
+    if (inMap.has(d.id)) addMeta(meta, 'Incoming', inMap.get(d.id).length + ' refs');
+
+    const refsEl = document.getElementById('p-refs');
+    const outs = outMap.get(d.id) || [];
+    const ins = inMap.get(d.id) || [];
+    var html = '<div class="ref-actions"><button class="ref-action-btn" data-a="e">Expand all</button><button class="ref-action-btn" data-a="c">Collapse all</button></div>';
+    html += refSec('References (' + outs.length + ')', outs, '\u2192', outs.length > 0 && outs.length <= 10);
+    html += refSec('Referenced by (' + ins.length + ')', ins, '\u2190', ins.length > 0 && ins.length <= 10);
+    refsEl.innerHTML = html;
+    refsEl.querySelectorAll('.ref-link').forEach(function(a) {
+      a.addEventListener('click', function() { revealFile(a.dataset.id); });
+    });
+    refsEl.querySelectorAll('.ref-action-btn').forEach(function(b) {
+      b.addEventListener('click', function() {
+        refsEl.querySelectorAll('details.ref-section').forEach(function(d) { d.open = b.dataset.a === 'e'; });
+      });
+    });
+
+    const ce = document.getElementById('p-content');
+    if (d.binary) ce.innerHTML = '<div class="binary-note">Binary file \u2014 cannot display contents</div>';
+    else if (!d.content) ce.innerHTML = '<div class="empty-note">(empty file)</div>';
+    else if (d.highlighted) { ce.innerHTML = d.highlighted; }
+    else { ce.innerHTML = '<pre><code>' + esc(d.content) + '</code></pre>'; }
+
+    updateBreadcrumb(d);
+    panel.classList.add('open');
+  }
+
+  function revealFile(fid) {
+    const f = byId.get(fid);
+    if (!f) return;
+    var parts = f.dir === '' ? [] : f.dir.split('/');
+    var p = '';
+    for (var i = 0; i < parts.length; i++) { p = p === '' ? parts[i] : p + '/' + parts[i]; expanded.add(p); }
+    render();
+    const el = world.querySelector('[data-id="' + CSS.escape(fid) + '"]');
+    if (el) {
+      selectFile(f);
+      const r = el.getBoundingClientRect();
+      const vr = viewport.getBoundingClientRect();
+      tx += vr.width / 2 - (r.left + r.width / 2);
+      ty += vr.height / 2 - (r.top + r.height / 2);
+      applyTransform();
+    }
+  }
+
+  function refSec(title, ids, arrow, openDef) {
+    const body = ids.length
+      ? ids.map(function(id) { return '<a class="ref-link" data-id="' + esc(id) + '"><span class="ref-arrow">' + arrow + '</span> ' + esc(id) + '</a>'; }).join('')
+      : '<div class="ref-none">none detected</div>';
+    return '<details class="ref-section"' + (openDef || !ids.length ? ' open' : '') + '>'
+      + '<summary class="ref-summary">' + esc(title) + ' <span class="ref-badge">' + ids.length + '</span></summary>'
+      + '<div class="ref-list">' + body + '</div></details>';
+  }
+
+  function addMeta(c, label, value) {
+    const chip = document.createElement('span');
+    chip.className = 'meta-chip';
+    chip.innerHTML = '<strong>' + esc(label) + ':</strong> ' + esc(value);
+    c.appendChild(chip);
+  }
+
+  function updateBreadcrumb(d) {
+    const bc = document.getElementById('breadcrumb');
+    var parts = d.dir ? d.dir.split('/') : [];
+    var html = '';
+    var p = '';
+    for (var i = 0; i < parts.length; i++) {
+      p = p === '' ? parts[i] : p + '/' + parts[i];
+      html += '<span class="bc-item" data-dir="' + esc(p) + '">' + esc(parts[i]) + '</span><span class="bc-sep">/</span>';
+    }
+    html += '<span class="bc-current">' + esc(d.name) + '</span>';
+    bc.innerHTML = html;
+    bc.classList.add('visible');
+    bc.querySelectorAll('.bc-item').forEach(function(el) {
+      el.addEventListener('click', function() {
+        var dir = el.dataset.dir;
+        if (expanded.has(dir)) expanded.delete(dir); else expanded.add(dir);
+        render();
+      });
+    });
+  }
+
+  document.getElementById('p-close').addEventListener('click', closePanel);
+  viewport.addEventListener('click', function(e) {
+    if (e.target === viewport || e.target === world) closePanel();
+  });
+
+  function closePanel() {
+    selectedId = null;
+    panel.classList.remove('open');
+    document.querySelectorAll('.file.selected').forEach(function(e) { e.classList.remove('selected'); });
+    document.getElementById('breadcrumb').classList.remove('visible');
+    highlightSelected();
+  }
+
+  function highlightSelected() {
+    if (!selectedId) {
+      world.querySelectorAll('.dimmed').forEach(function(e) { e.classList.remove('dimmed'); });
+      return;
+    }
+    const conn = new Set([selectedId]);
+    for (const id of (outMap.get(selectedId) || [])) conn.add(id);
+    for (const id of (inMap.get(selectedId) || [])) conn.add(id);
+    world.querySelectorAll('.file').forEach(function(el) {
+      el.classList.toggle('dimmed', !conn.has(el.dataset.id));
+    });
+    world.querySelectorAll('.group').forEach(function(el) {
+      const dp = el.dataset.dir;
+      let hit = false;
+      for (const fid of conn) {
+        const f = byId.get(fid);
+        if (f && (f.dir === dp || (dp && f.dir.startsWith(dp + '/')))) { hit = true; break; }
+      }
+      el.classList.toggle('dimmed', !hit);
+    });
+  }
+
+  render();
+}
+</script>
+</body>
+</html>
